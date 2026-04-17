@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased text-gray-900 bg-gray-50;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-white/70 backdrop-blur-lg border border-white/40 shadow-xl;
+  }
+  .glass-panel-dark {
+    @apply bg-gray-900/70 backdrop-blur-lg border border-gray-700/50 shadow-xl;
+  }
+}
+
+/* Custom Scrollbar for sleek dark-mode aesthetic */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #000000;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #1a1a1a;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #000000 transparent;
+}
