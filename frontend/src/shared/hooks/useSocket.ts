@@ -7,7 +7,7 @@ let socketInstance: Socket | null = null;
 export const useSocket = () => {
   const { accessToken } = useAuthStore();
   const [isConnected, setIsConnected] = useState(socketInstance?.connected || false);
-  const listenersRef = useRef(new Map<string, Function[]>());
+  const listenersRef = useRef(new Map<string, ((...args: unknown[]) => void)[]>());
 
   useEffect(() => {
     if (!accessToken) {
@@ -15,7 +15,8 @@ export const useSocket = () => {
         socketInstance.disconnect();
         socketInstance = null;
       }
-      setIsConnected(false);
+      // Use a microtask to avoid synchronous setState inside effect body
+      Promise.resolve().then(() => setIsConnected(false));
       return;
     }
 
@@ -36,14 +37,14 @@ export const useSocket = () => {
   }, [accessToken]);
 
   // Subscribe to socket events dynamically
-  const on = useCallback((event: string, callback: (...args: any[]) => void) => {
+  const on = useCallback((event: string, callback: (...args: unknown[]) => void) => {
     if (!socketInstance) return;
 
     if (!listenersRef.current.has(event)) {
       listenersRef.current.set(event, []);
     }
     listenersRef.current.get(event)?.push(callback);
-    socketInstance.on(event, callback);
+    socketInstance.on(event, callback as (...args: unknown[]) => void);
 
     return () => {
       const cbs = listenersRef.current.get(event) || [];
@@ -53,7 +54,7 @@ export const useSocket = () => {
     };
   }, []);
 
-  const emit = useCallback((event: string, ...args: any[]) => {
+  const emit = useCallback((event: string, ...args: unknown[]) => {
     if (socketInstance && socketInstance.connected) {
       socketInstance.emit(event, ...args);
     } else {

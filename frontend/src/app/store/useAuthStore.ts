@@ -3,8 +3,10 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 
 interface User {
   id: string;
-  email: string;
+  email: string | null;
+  phoneNumber?: string | null;
   displayName: string;
+  loginCount: number;
 }
 
 interface AuthState {

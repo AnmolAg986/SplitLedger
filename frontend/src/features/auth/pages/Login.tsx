@@ -116,36 +116,38 @@ export const Login = () => {
       )}
 
       {/* Main Card */}
-      <div className="relative z-10 w-full max-w-[460px] bg-[#0c0c0e] border border-white/[0.08] rounded-3xl shadow-[0_0_80px_rgba(0,0,0,0.8)] p-6 sm:p-10">
+      <div className="relative z-10 w-full max-w-[440px] bg-[#0c0c0e] border border-white/[0.08] rounded-[32px] shadow-[0_0_80px_rgba(0,0,0,0.8)] p-7 sm:p-10 mx-auto">
         
-        <div className="flex flex-col items-center text-center">
+        <div className="flex flex-col">
           
-          {/* Logo */}
-          <div className="h-12 w-12 bg-white/10 border border-white/20 rounded-2xl flex items-center justify-center mb-4 backdrop-blur-md shadow-inner">
-            <Activity className="h-6 w-6 text-white" strokeWidth={2} />
+          {/* Header (Centered) */}
+          <div className="flex flex-col items-center text-center mb-10">
+            <div className="h-14 w-14 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center mb-5 backdrop-blur-md shadow-inner">
+              <Activity className="h-7 w-7 text-white" strokeWidth={2} />
+            </div>
+
+            <h2 className="font-display text-3xl font-bold tracking-tight mb-2 text-white">
+              SplitLedger
+            </h2>
+            <p className="text-zinc-500 text-[14px] font-medium opacity-80">
+              Access your secure account.
+            </p>
           </div>
 
-          <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight mb-1.5 text-white">
-            SplitLedger
-          </h2>
-          <p className="text-zinc-400 text-[14px] mb-6 font-medium">
-            Access your secure account.
-          </p>
-
           {error && (
-            <div className={`w-full mb-5 p-3 text-[13px] font-medium rounded-lg flex items-center justify-between text-left border ${
+            <div className={`w-full mb-6 p-4 text-[13px] font-semibold rounded-xl flex items-center justify-between text-left border animate-in fade-in slide-in-from-top-2 duration-300 ${
               error.includes('verify') 
                 ? 'text-amber-300 bg-amber-500/10 border-amber-500/20' 
                 : 'text-rose-300 bg-rose-500/10 border-rose-500/20'
             }`}>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3">
                 <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${error.includes('verify') ? 'bg-amber-500' : 'bg-rose-500'}`} />
-                <span>{error}</span>
+                <span className="leading-snug">{error}</span>
               </div>
               {error.includes('verify') && (
                 <button 
                   onClick={() => navigate(`/verify-email?identifier=${encodeURIComponent(identifier)}`)}
-                  className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 rounded font-bold transition-colors ml-4"
+                  className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 rounded-lg font-bold transition-colors ml-4 shrink-0"
                 >
                   Verify
                 </button>
@@ -153,15 +155,15 @@ export const Login = () => {
             </div>
           )}
 
-          <form className="w-full space-y-5" noValidate onSubmit={handleSubmit}>
+          <form className="w-full space-y-6" noValidate onSubmit={handleSubmit}>
             {/* Identifier */}
-            <div className="space-y-1.5 text-left">
-              <label className="block text-[11px] font-bold text-white uppercase tracking-widest ml-1">
+            <div className="space-y-2">
+              <label htmlFor="identifier" className="block text-[12px] font-bold text-zinc-400 uppercase tracking-[0.1em] ml-1">
                 Email or Phone
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <Mail className="h-4 w-4 text-zinc-500" strokeWidth={2} />
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Mail className="h-4 w-4 text-zinc-500 group-focus-within:text-white transition-colors" strokeWidth={2} />
                 </div>
                 <input
                   id="identifier"
@@ -169,7 +171,7 @@ export const Login = () => {
                   autoComplete="username"
                   type="text"
                   required
-                  className="w-full pl-10 pr-4 py-2.5 bg-[#050505] border border-white/10 rounded-lg focus:border-white/30 focus:ring-0 outline-none transition-colors text-[14px] font-medium text-white placeholder-zinc-600"
+                  className="w-full pl-11 pr-4 py-3 bg-[#050505] border border-white/5 rounded-xl focus:border-white/20 focus:bg-[#0a0a0a] focus:ring-4 focus:ring-white/[0.02] outline-none transition-all text-[15px] font-medium text-white placeholder-zinc-600"
                   placeholder="you@domain.com or +1234567890"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
@@ -178,18 +180,18 @@ export const Login = () => {
             </div>
 
             {/* Password */}
-            <div className="space-y-1.5 text-left">
+            <div className="space-y-2">
               <div className="flex justify-between items-center ml-1">
-                <label className="text-[11px] font-bold text-white uppercase tracking-widest">
+                <label htmlFor="password" className="text-[12px] font-bold text-zinc-400 uppercase tracking-[0.1em]">
                   Password
                 </label>
-                <Link to="/forgot-password" className="text-[12px] font-medium text-white hover:text-zinc-300 transition-colors">
+                <Link to="/forgot-password" size="sm" className="text-[12px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors">
                   Forgot?
                 </Link>
               </div>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <LockKeyhole className="h-4 w-4 text-zinc-500" strokeWidth={2} />
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <LockKeyhole className="h-4 w-4 text-zinc-500 group-focus-within:text-white transition-colors" strokeWidth={2} />
                 </div>
                 <input
                   id="password"
@@ -197,7 +199,7 @@ export const Login = () => {
                   autoComplete="current-password"
                   type={showPassword ? 'text' : 'password'}
                   required
-                  className="w-full pl-10 pr-10 py-2.5 bg-[#050505] border border-white/10 rounded-lg focus:border-white/30 focus:ring-0 outline-none transition-colors text-[14px] font-medium text-white placeholder-zinc-600"
+                  className="w-full pl-11 pr-11 py-3 bg-[#050505] border border-white/5 rounded-xl focus:border-white/20 focus:bg-[#0a0a0a] focus:ring-4 focus:ring-white/[0.02] outline-none transition-all text-[15px] font-medium text-white placeholder-zinc-600"
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -205,7 +207,7 @@ export const Login = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors"
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors"
                   tabIndex={-1}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
@@ -216,25 +218,38 @@ export const Login = () => {
               </div>
             </div>
 
-            <div className="pt-2.5">
+            {/* Remember Me */}
+            <div className="flex items-center px-1">
+               <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative flex items-center justify-center h-5 w-5 bg-[#050505] border border-white/10 rounded-md group-hover:border-white/20 transition-all">
+                     <input type="checkbox" className="peer absolute h-full w-full opacity-0 cursor-pointer" defaultChecked />
+                     <div className="h-2.5 w-2.5 bg-white rounded-[2px] opacity-0 peer-checked:opacity-100 transition-opacity" />
+                  </div>
+                  <span className="text-[13px] font-medium text-zinc-400 group-hover:text-zinc-300 transition-colors">Stay signed in</span>
+               </label>
+            </div>
+
+            <div className="pt-4">
               <button
                 id="login-submit"
                 type="submit"
                 disabled={loading}
-                className="relative w-full flex justify-center items-center py-3.5 px-4 text-[15px] font-bold rounded-lg text-black bg-white hover:bg-zinc-200 focus:outline-none focus:ring-0 transition-all duration-200 active:scale-[0.97] disabled:opacity-70 disabled:cursor-not-allowed group"
+                className="relative w-full flex justify-center items-center py-4 px-4 text-[15px] font-bold rounded-xl text-black bg-white hover:bg-zinc-200 focus:outline-none focus:ring-0 transition-all duration-200 active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed shadow-[0_4px_20px_rgba(255,255,255,0.1)]"
               >
                 <span>{loading ? 'Signing in...' : 'Sign In'}</span>
-                {!loading && <ArrowRight className="ml-2 h-4 w-4 transform transition-transform" strokeWidth={2.5} />}
+                {!loading && <ArrowRight className="ml-2 h-4 w-4" strokeWidth={3} />}
               </button>
             </div>
           </form>
 
-          <p className="mt-6 text-center text-[14px] font-medium text-zinc-400">
-            Don't have an account?{' '}
-            <Link to="/signup" className="text-white hover:text-zinc-300 transition-colors underline decoration-white/30 underline-offset-4">
-              Create one
-            </Link>
-          </p>
+          <div className="mt-10 pt-8 border-t border-white/5 text-center">
+            <p className="text-[14px] font-medium text-zinc-500">
+              Don't have an account?{' '}
+              <Link to="/signup" className="text-white hover:text-indigo-400 font-bold transition-colors ml-1">
+                Create one
+              </Link>
+            </p>
+          </div>
         </div>
       </div>
     </div>

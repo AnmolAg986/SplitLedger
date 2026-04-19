@@ -77,7 +77,14 @@ export const DashboardLayout = () => {
                   const Icon = item.icon;
                   return (
                     <>
-                      <Icon className={`h-[20px] w-[20px] shrink-0 ${isActive ? 'text-cyan-400' : 'text-zinc-500 group-hover:text-zinc-300'} transition-colors`} />
+                      <div className="relative flex items-center justify-center">
+                        <Icon className={`h-[20px] w-[20px] shrink-0 ${isActive ? 'text-cyan-400' : 'text-zinc-500 group-hover:text-zinc-300'} transition-colors`} />
+                        {isCollapsed && item.badge && (
+                          <span className="absolute -top-1.5 -right-2 bg-cyan-500 text-black text-[9px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center border border-[#0c0c0e] shadow-[0_0_8px_rgba(34,211,238,0.4)]">
+                            {item.badge}
+                          </span>
+                        )}
+                      </div>
                       
                       {!isCollapsed && (
                         <div className="flex items-center justify-between w-full overflow-hidden transition-all duration-300">

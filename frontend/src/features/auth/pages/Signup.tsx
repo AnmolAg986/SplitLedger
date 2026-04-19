@@ -81,39 +81,41 @@ export const Signup = () => {
   return (
     <div className="relative min-h-screen w-full flex items-center justify-center p-4 bg-[#050505] font-sans overflow-y-auto">
       <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-white/5 rounded-full blur-[120px] pointer-events-none" />
-
-      <div className="relative z-10 w-full max-w-[460px] bg-[#0c0c0e] border border-white/[0.08] rounded-3xl shadow-[0_0_80px_rgba(0,0,0,0.8)] p-6 my-6">
+      {/* Main Card */}
+      <div className="relative z-10 w-full max-w-[480px] bg-[#0c0c0e] border border-white/[0.08] rounded-[32px] shadow-[0_0_80px_rgba(0,0,0,0.8)] p-7 sm:p-10 my-8 mx-auto">
         
-        <div className="flex flex-col items-center text-center">
+        <div className="flex flex-col">
           
-          {/* Logo */}
-          <div className="h-12 w-12 bg-white/10 border border-white/20 rounded-2xl flex items-center justify-center mb-4 backdrop-blur-md shadow-inner">
-            <Activity className="h-6 w-6 text-white" strokeWidth={2} />
+          {/* Header (Centered) */}
+          <div className="flex flex-col items-center text-center mb-8">
+            <div className="h-14 w-14 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center mb-5 backdrop-blur-md shadow-inner">
+              <Activity className="h-7 w-7 text-white" strokeWidth={2} />
+            </div>
+
+            <h2 className="font-display text-3xl font-bold tracking-tight mb-2 text-white">
+              SplitLedger
+            </h2>
+            <p className="text-zinc-500 text-[14px] font-medium opacity-80">
+              Create an account to track expenses.
+            </p>
           </div>
 
-          <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight mb-1 text-white">
-            SplitLedger
-          </h2>
-          <p className="text-zinc-400 text-[14px] mb-4 font-medium">
-            Create an account to track expenses.
-          </p>
-
           {error && (
-            <div className="w-full mb-5 p-3 text-[13px] font-medium text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-lg flex items-center space-x-2 text-left">
+            <div className="w-full mb-6 p-4 text-[13px] font-semibold text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center space-x-3 text-left animate-in fade-in slide-in-from-top-2 duration-300">
               <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-              <span>{error}</span>
+              <span className="leading-snug">{error}</span>
             </div>
           )}
 
-          <form className="w-full space-y-4" noValidate onSubmit={handleSubmit}>
+          <form className="w-full space-y-5" noValidate onSubmit={handleSubmit}>
             {/* Name */}
-            <div className="space-y-1.5 text-left">
-              <label className="block text-[11px] font-bold text-white uppercase tracking-widest ml-1">
-                Name
+            <div className="space-y-2">
+              <label htmlFor="displayName" className="block text-[12px] font-bold text-zinc-400 uppercase tracking-[0.1em] ml-1">
+                Full Name
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <User className="h-4 w-4 text-zinc-500" strokeWidth={2} />
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <User className="h-4 w-4 text-zinc-500 group-focus-within:text-white transition-colors" strokeWidth={2} />
                 </div>
                 <input
                   id="displayName"
@@ -121,7 +123,7 @@ export const Signup = () => {
                   autoComplete="name"
                   type="text"
                   required
-                  className="w-full pl-10 pr-4 py-2.5 bg-[#050505] border border-white/10 rounded-lg focus:border-white/30 focus:ring-0 outline-none transition-colors text-[14px] font-medium text-white placeholder-zinc-600"
+                  className="w-full pl-11 pr-4 py-3 bg-[#050505] border border-white/5 rounded-xl focus:border-white/20 focus:bg-[#0a0a0a] focus:ring-4 focus:ring-white/[0.02] outline-none transition-all text-[15px] font-medium text-white placeholder-zinc-600"
                   placeholder="Jane Doe"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
@@ -130,13 +132,13 @@ export const Signup = () => {
             </div>
 
             {/* Identifier */}
-            <div className="space-y-1.5 text-left">
-              <label className="block text-[11px] font-bold text-white uppercase tracking-widest ml-1">
+            <div className="space-y-2">
+              <label htmlFor="identifier" className="block text-[12px] font-bold text-zinc-400 uppercase tracking-[0.1em] ml-1">
                 Email or Phone
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <Mail className="h-4 w-4 text-zinc-500" strokeWidth={2} />
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Mail className="h-4 w-4 text-zinc-500 group-focus-within:text-white transition-colors" strokeWidth={2} />
                 </div>
                 <input
                   id="identifier"
@@ -144,7 +146,7 @@ export const Signup = () => {
                   autoComplete="username"
                   type="text"
                   required
-                  className="w-full pl-10 pr-4 py-2.5 bg-[#050505] border border-white/10 rounded-lg focus:border-white/30 focus:ring-0 outline-none transition-colors text-[14px] font-medium text-white placeholder-zinc-600"
+                  className="w-full pl-11 pr-4 py-3 bg-[#050505] border border-white/5 rounded-xl focus:border-white/20 focus:bg-[#0a0a0a] focus:ring-4 focus:ring-white/[0.02] outline-none transition-all text-[15px] font-medium text-white placeholder-zinc-600"
                   placeholder="you@domain.com or +1234567890"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
@@ -153,13 +155,13 @@ export const Signup = () => {
             </div>
 
             {/* Password */}
-            <div className="space-y-1.5 text-left">
-              <label className="block text-[11px] font-bold text-white uppercase tracking-widest ml-1">
+            <div className="space-y-2">
+              <label htmlFor="password" className="block text-[12px] font-bold text-zinc-400 uppercase tracking-[0.1em] ml-1">
                 Password
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <LockKeyhole className="h-4 w-4 text-zinc-500" strokeWidth={2} />
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <LockKeyhole className="h-4 w-4 text-zinc-500 group-focus-within:text-white transition-colors" strokeWidth={2} />
                 </div>
                 <input
                   id="password"
@@ -169,8 +171,7 @@ export const Signup = () => {
                   required
                   minLength={6}
                   pattern="^[a-zA-Z0-9]+$"
-                  title="Password can only contain letters and numbers (no special characters or spaces)"
-                  className="w-full pl-10 pr-10 py-2.5 bg-[#050505] border border-white/10 rounded-lg focus:border-white/30 focus:ring-0 outline-none transition-colors text-[14px] font-medium text-white placeholder-zinc-600"
+                  className="w-full pl-11 pr-11 py-3 bg-[#050505] border border-white/5 rounded-xl focus:border-white/20 focus:bg-[#0a0a0a] focus:ring-4 focus:ring-white/[0.02] outline-none transition-all text-[15px] font-medium text-white placeholder-zinc-600"
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -178,7 +179,7 @@ export const Signup = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors"
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors"
                   tabIndex={-1}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" strokeWidth={2} /> : <Eye className="h-4 w-4" strokeWidth={2} />}
@@ -187,16 +188,16 @@ export const Signup = () => {
               
               {/* Password Strength Indicator */}
               {password && (
-                <div className="mx-1 mt-2 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-300">
-                  <div className="flex justify-between items-center text-[10px] font-bold tracking-wider uppercase">
-                    <span className="text-zinc-500">Security</span>
+                <div className="mx-1 mt-3 space-y-2 animate-in fade-in slide-in-from-top-1 duration-300">
+                  <div className="flex justify-between items-center text-[10px] font-bold tracking-widest uppercase">
+                    <span className="text-zinc-500">Security Strength</span>
                     <span className={strength.textColor}>{strength.label}</span>
                   </div>
-                  <div className="flex gap-1 h-1">
+                  <div className="flex gap-1.5 h-1">
                     {[1, 2, 3].map(level => (
                       <div 
                         key={level} 
-                        className={`flex-1 rounded-full transition-colors duration-300 ${strength.score >= level ? strength.color : 'bg-white/10'}`}
+                        className={`flex-1 rounded-full transition-all duration-500 ${strength.score >= level ? strength.color : 'bg-white/5'}`}
                       />
                     ))}
                   </div>
@@ -205,13 +206,13 @@ export const Signup = () => {
             </div>
 
             {/* Confirm Password */}
-            <div className="space-y-1.5 text-left">
-              <label className="block text-[11px] font-bold text-white uppercase tracking-widest ml-1">
+            <div className="space-y-2">
+              <label htmlFor="confirm-password" className="block text-[12px] font-bold text-zinc-400 uppercase tracking-[0.1em] ml-1">
                 Confirm Password
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <LockKeyhole className="h-4 w-4 text-zinc-500" strokeWidth={2} />
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <LockKeyhole className="h-4 w-4 text-zinc-500 group-focus-within:text-white transition-colors" strokeWidth={2} />
                 </div>
                 <input
                   id="confirm-password"
@@ -219,12 +220,12 @@ export const Signup = () => {
                   autoComplete="new-password"
                   type={showConfirm ? 'text' : 'password'}
                   required
-                  className={`w-full pl-10 pr-10 py-2.5 bg-[#050505] border rounded-lg focus:ring-0 outline-none transition-colors text-[14px] font-medium text-white placeholder-zinc-600 ${
+                  className={`w-full pl-11 pr-11 py-3 bg-[#050505] border rounded-xl focus:ring-4 focus:ring-white/[0.02] outline-none transition-all text-[15px] font-medium text-white placeholder-zinc-600 ${
                     passwordsMismatch
-                      ? 'border-rose-500/50 focus:border-rose-500/70'
+                      ? 'border-rose-500/30 focus:border-rose-500/50'
                       : passwordsMatch
-                      ? 'border-emerald-500/40 focus:border-emerald-500/60'
-                      : 'border-white/10 focus:border-white/30'
+                      ? 'border-emerald-500/30 focus:border-emerald-500/50'
+                      : 'border-white/5 focus:border-white/20'
                   }`}
                   placeholder="••••••••"
                   value={confirmPassword}
@@ -233,38 +234,34 @@ export const Signup = () => {
                 <button
                   type="button"
                   onClick={() => setShowConfirm(!showConfirm)}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors"
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors"
                   tabIndex={-1}
                 >
                   {showConfirm ? <EyeOff className="h-4 w-4" strokeWidth={2} /> : <Eye className="h-4 w-4" strokeWidth={2} />}
                 </button>
               </div>
-              {passwordsMismatch && (
-                <p className="text-[12px] font-medium text-rose-400 ml-1 mt-1 animate-in fade-in duration-200">Passwords do not match.</p>
-              )}
-              {passwordsMatch && (
-                <p className="text-[12px] font-medium text-emerald-400 ml-1 mt-1 animate-in fade-in duration-200">Passwords match ✓</p>
-              )}
             </div>
 
-            <div className="pt-1">
+            <div className="pt-6">
               <button
                 type="submit"
                 disabled={loading}
-                className="relative w-full flex justify-center items-center py-3.5 px-4 text-[15px] font-bold rounded-lg text-black bg-white hover:bg-zinc-200 focus:outline-none focus:ring-0 transition-all duration-200 active:scale-[0.97] disabled:opacity-70 disabled:cursor-not-allowed group"
+                className="relative w-full flex justify-center items-center py-4 px-4 text-[15px] font-bold rounded-xl text-black bg-white hover:bg-zinc-200 focus:outline-none focus:ring-0 transition-all duration-200 active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed shadow-[0_4px_20px_rgba(255,255,255,0.1)]"
               >
                 <span>{loading ? 'Processing...' : 'Create Account'}</span>
-                {!loading && <ArrowRight className="ml-2 h-4 w-4 transform transition-transform" strokeWidth={2.5} />}
+                {!loading && <ArrowRight className="ml-2 h-4 w-4" strokeWidth={3} />}
               </button>
             </div>
           </form>
 
-          <p className="mt-4 text-center text-[14px] font-medium text-zinc-400">
-            Already have an account?{' '}
-            <Link to="/login" className="text-white hover:text-zinc-300 transition-colors underline decoration-white/30 underline-offset-4">
-              Sign in
-            </Link>
-          </p>
+          <div className="mt-8 pt-8 border-t border-white/5 text-center">
+            <p className="text-[14px] font-medium text-zinc-500">
+              Already have an account?{' '}
+              <Link to="/login" className="text-white hover:text-indigo-400 font-bold transition-colors ml-1">
+                Sign in
+              </Link>
+            </p>
+          </div>
         </div>
       </div>
     </div>

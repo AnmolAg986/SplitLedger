@@ -10,6 +10,7 @@ export interface User {
   defaultCurrency: string;
   upiId?: string;
   isVerified: boolean;
+  loginCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,6 +35,26 @@ export class UserRepository {
       defaultCurrency: row.default_currency,
       upiId: row.upi_id,
       isVerified: row.is_verified,
+      loginCount: row.login_count,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  static async findById(id: string): Promise<User | null> {
+    const res = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+    if (res.rows.length === 0) return null;
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      email: row.email,
+      phoneNumber: row.phone_number,
+      displayName: row.display_name,
+      avatarUrl: row.avatar_url,
+      defaultCurrency: row.default_currency,
+      upiId: row.upi_id,
+      isVerified: row.is_verified,
+      loginCount: row.login_count,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -56,6 +77,7 @@ export class UserRepository {
       defaultCurrency: row.default_currency,
       upiId: row.upi_id,
       isVerified: row.is_verified,
+      loginCount: row.login_count,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -63,6 +85,10 @@ export class UserRepository {
 
   static async updatePassword(userId: string, newHash: string): Promise<void> {
     await pool.query('UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2', [newHash, userId]);
+  }
+
+  static async incrementLoginCount(userId: string): Promise<void> {
+    await pool.query('UPDATE users SET login_count = login_count + 1 WHERE id = $1', [userId]);
   }
 
   // --- OTP Verification Logic ---

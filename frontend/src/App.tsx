@@ -10,13 +10,16 @@ import { Dashboard } from './features/dashboard/pages/Dashboard';
 
 import { Friends } from './features/friends/pages/Friends';
 import { FriendDetail } from './features/friends/pages/FriendDetail';
-// import { Groups } from './features/groups/pages/Groups';
-// import { GroupDetail } from './features/groups/pages/GroupDetail';
-// import { Activity } from './features/dashboard/pages/Activity';
+import { Groups } from './features/groups/pages/Groups';
+import { GroupDetail } from './features/groups/pages/GroupDetail';
+import { JoinGroup } from './features/groups/pages/JoinGroup';
+import { Activity } from './features/dashboard/pages/Activity';
+import { ToastContainer } from './shared/components/ToastContainer';
 
 export const App = () => {
   return (
     <BrowserRouter>
+      <ToastContainer />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
@@ -32,9 +35,10 @@ export const App = () => {
             
             <Route path="/friends" element={<Friends />} />
             <Route path="/friends/:id" element={<FriendDetail />} />
-            {/* <Route path="/groups" element={<Groups />} /> */}
-            {/* <Route path="/groups/:id" element={<GroupDetail />} /> */}
-            {/* <Route path="/activity" element={<Activity />} /> */}
+            <Route path="/groups" element={<Groups />} />
+            <Route path="/groups/:id" element={<GroupDetail />} />
+            <Route path="/join/:token" element={<JoinGroup />} />
+            <Route path="/activity" element={<Activity />} />
 
           </Route>
         </Route>

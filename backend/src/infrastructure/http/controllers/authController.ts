@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
+import { AuthenticatedRequest } from '../types/Request';
 import { UserRepository } from '../../persistence/UserRepository';
 import { hashPassword, verifyPassword } from '../../../shared/utils/hash';
 import { generateTokens, verifyRefreshToken } from '../../../shared/utils/jwt';
@@ -88,9 +89,16 @@ export class AuthController {
       }
 
       const { accessToken, refreshToken } = generateTokens(user.id);
+      await UserRepository.incrementLoginCount(user.id);
 
       return res.status(200).json({
-        user: { id: user.id, email: user.email, phoneNumber: user.phoneNumber, displayName: user.displayName },
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          phoneNumber: user.phoneNumber, 
+          displayName: user.displayName,
+          loginCount: user.loginCount + 1
+        },
         accessToken,
         refreshToken,
       });
@@ -148,8 +156,18 @@ export class AuthController {
       if (!isValid) return res.status(400).json({ error: 'Invalid or expired code' });
 
       const { accessToken, refreshToken } = generateTokens(user.id);
+      await UserRepository.incrementLoginCount(user.id);
+      
+      const updatedUser = await UserRepository.findById(user.id);
+
       return res.status(200).json({
-        user: { id: user.id, email: user.email, phoneNumber: user.phoneNumber, displayName: user.displayName },
+        user: { 
+          id: updatedUser?.id, 
+          email: updatedUser?.email, 
+          phoneNumber: updatedUser?.phoneNumber, 
+          displayName: updatedUser?.displayName,
+          loginCount: updatedUser?.loginCount
+        },
         accessToken,
         refreshToken,
       });
@@ -159,7 +177,7 @@ export class AuthController {
     }
   }
 
-  static async resendOtp(req: Request, res: Response) {
+  static async resendOtp(req: AuthenticatedRequest, res: Response) {
     try {
       const { identifier } = req.body;
       if (!identifier) return res.status(400).json({ error: 'Identifier required' });
@@ -185,7 +203,7 @@ export class AuthController {
     }
   }
 
-  static async forgotPassword(req: Request, res: Response) {
+  static async forgotPassword(req: AuthenticatedRequest, res: Response) {
     try {
       const { identifier } = req.body;
       if (!identifier) return res.status(400).json({ error: 'Identifier required' });
@@ -211,7 +229,7 @@ export class AuthController {
     }
   }
 
-  static async verifyResetOtp(req: Request, res: Response) {
+  static async verifyResetOtp(req: AuthenticatedRequest, res: Response) {
     try {
       const { identifier, code } = req.body;
       if (!identifier || !code) return res.status(400).json({ error: 'Identifier and code required' });
@@ -229,7 +247,7 @@ export class AuthController {
     }
   }
 
-  static async resetPassword(req: Request, res: Response) {
+  static async resetPassword(req: AuthenticatedRequest, res: Response) {
     try {
       const { identifier, code, newPassword } = req.body;
       if (!identifier || !code || !newPassword) return res.status(400).json({ error: 'Missing fields' });
