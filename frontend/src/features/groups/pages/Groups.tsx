@@ -4,9 +4,11 @@ import { apiClient } from '../../../shared/api/axios';
 import { Users, Loader2, Plus, UsersRound, X, Search, Clock } from 'lucide-react';
 import type { Group, GroupMember } from '../types/group';
 import { toast } from '../../../shared/store/useToastStore';
+import { useUnreadStore } from '../../../shared/store/useUnreadStore';
 
 export const Groups = () => {
   const navigate = useNavigate();
+  const getEntityCount = useUnreadStore(state => state.getEntityCount);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -232,6 +234,12 @@ export const Groups = () => {
               {/* Glow effect on hover */}
               <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               
+              {getEntityCount('group', g.id) > 0 && (
+                <div className="absolute top-3 right-3 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow-[0_0_10px_rgba(244,63,94,0.5)] z-20">
+                  {getEntityCount('group', g.id) > 99 ? '99+' : getEntityCount('group', g.id)}
+                </div>
+              )}
+
               <div className="flex justify-between items-start mb-5 relative z-10 w-full">
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-indigo-600/10 flex items-center justify-center border border-indigo-500/30 group-hover:scale-105 transition-transform shadow-[0_0_15px_rgba(99,102,241,0.15)] overflow-hidden">
                   {g.avatar_url ? (

@@ -12,6 +12,7 @@ import { InviteModal } from '../../../shared/components/InviteModal';
 import { getFirstName, getSplitSummary } from '../../../shared/utils/expenseUtils';
 import { ConfirmModal } from '../../../shared/components/ConfirmModal';
 import { useAuthStore } from '../../../app/store/useAuthStore';
+import { useUnreadStore } from '../../../shared/store/useUnreadStore';
 
 interface GroupExpense {
   id: string;
@@ -45,6 +46,7 @@ export const GroupDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const currentUser = useAuthStore(state => state.user);
+  const { markAsRead } = useUnreadStore();
   const [detail, setDetail] = useState<{ 
     id: string; 
     name: string; 
@@ -106,7 +108,13 @@ export const GroupDetail = () => {
   };
 
   useEffect(() => {
-    if (id) refreshData();
+    if (id) {
+      refreshData();
+      // Mark group sections as read since they are visible on this page
+      markAsRead('group', id, 'expenses');
+      markAsRead('group', id, 'payments');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const handleDeleteExpense = async (expenseId: string) => {
@@ -458,7 +466,7 @@ export const GroupDetail = () => {
         defaultDueDay={detail.default_due_day}
       />
       
-      <GroupChat groupId={id!} />
+      <GroupChat groupId={id!} members={detail.members || []} />
 
       <GroupInfoDrawer
         isOpen={isInfoOpen}

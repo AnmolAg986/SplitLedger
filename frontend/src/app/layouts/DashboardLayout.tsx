@@ -5,26 +5,37 @@ import { useAuthStore } from '../store/useAuthStore';
 import { CommandPalette } from '../../features/dashboard/components/CommandPalette';
 import { useSocket } from '../../shared/hooks/useSocket';
 import { toast } from '../../shared/store/useToastStore';
+import { useUnreadStore } from '../../shared/store/useUnreadStore';
 
 export const DashboardLayout = () => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(true);
   const { on } = useSocket();
+  const { counts, fetchCounts, handleUpdate, getPageCount, getTotalActivityCount } = useUnreadStore();
+
+  React.useEffect(() => {
+    fetchCounts();
+  }, [fetchCounts]);
 
   React.useEffect(() => {
     const unsub = on('notification', (data: any) => {
       if (data.type === 'reminder') {
-        toast.info(data.message); // using info or success from custom toast
+        toast.info(data.message);
       } else {
         toast.success(data.message);
       }
     });
 
+    const unsub2 = on('unread_update', (data: any) => {
+      handleUpdate(data);
+    });
+
     return () => {
       if (unsub) unsub();
+      if (unsub2) unsub2();
     };
-  }, [on]);
+  }, [on, handleUpdate]);
 
   // We will build the full Command Palette logic in the next phase!
   // For now, it will be visually integrated into the sidebar.
@@ -34,10 +45,15 @@ export const DashboardLayout = () => {
     navigate('/login');
   };
 
+  const totalActivityBadge = getTotalActivityCount();
+  const friendsBadge = getPageCount('friend');
+  const groupsBadge = getPageCount('group');
+  const connectionsBadge = friendsBadge + groupsBadge;
+
   const menuItems = [
     { name: 'Dashboard', icon: LayoutDashboard, path: '/' },
-    { name: 'Activity', icon: Clock, path: '/activity', badge: '3' },
-    { name: 'Connections', icon: Users, path: '/connections' },
+    { name: 'Activity', icon: Clock, path: '/activity', badge: totalActivityBadge > 0 ? (totalActivityBadge > 99 ? '99+' : totalActivityBadge.toString()) : undefined },
+    { name: 'Connections', icon: Users, path: '/connections', badge: connectionsBadge > 0 ? (connectionsBadge > 99 ? '99+' : connectionsBadge.toString()) : undefined },
     { name: 'Expenses', icon: Receipt, path: '/expenses' },
     { name: 'Profile', icon: User, path: '/profile' },
   ];
@@ -107,7 +123,7 @@ export const DashboardLayout = () => {
                           <span className="text-[14px] whitespace-nowrap">{item.name}</span>
                           {/* Optional Notification Badge */}
                           {item.badge && (
-                            <span className="ml-auto bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-[0_0_8px_rgba(34,211,238,0.2)]">
+                            <span className="ml-auto bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-[0_0_8px_rgba(244,63,94,0.4)]">
                               {item.badge}
                             </span>
                           )}

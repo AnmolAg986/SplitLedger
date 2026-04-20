@@ -38,7 +38,7 @@ export const useSocket = () => {
 
   // Subscribe to socket events dynamically
   const on = useCallback((event: string, callback: (...args: unknown[]) => void) => {
-    if (!socketInstance) return;
+    if (!socketInstance) return () => {};
 
     if (!listenersRef.current.has(event)) {
       listenersRef.current.set(event, []);

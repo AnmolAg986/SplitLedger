@@ -8,6 +8,7 @@ import { ArrowLeft, Send, Receipt, Banknote, Edit2, Trash2, Bell, Loader2, Messa
 import { ExpenseModal } from '../../expenses/components/ExpenseModal';
 import { ConfirmModal } from '../../../shared/components/ConfirmModal';
 import { ExpenseCharts } from '../../groups/components/ExpenseCharts';
+import { useUnreadStore } from '../../../shared/store/useUnreadStore';
 
 interface FriendExpense {
   id: string;
@@ -44,6 +45,7 @@ export const FriendDetail = () => {
   const navigate = useNavigate();
   const { emit, on } = useSocket();
   const currentUser = useAuthStore(s => s.user);
+  const { getSectionCount, markAsRead } = useUnreadStore();
   const [detail, setDetail] = useState<FriendDetailData | null>(null);
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [msgInput, setMsgInput] = useState('');
@@ -59,6 +61,10 @@ export const FriendDetail = () => {
   const [nicknameInput, setNicknameInput] = useState('');
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  // Track isChatOpen in a ref so socket callbacks always see the current value
+  // without needing to re-register listeners on every open/close toggle.
+  const isChatOpenRef = useRef(isChatOpen);
+  isChatOpenRef.current = isChatOpen;
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -90,29 +96,52 @@ export const FriendDetail = () => {
           expenses: detailRes.data.expenses?.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         });
         setChat(chatRes.data);
+        setNicknameInput(detailRes.data.friend.nickname || '');
       }).catch(console.error);
 
       emit('join_conversation', id);
       emit('mark_delivered');
+      markAsRead('friend', id, 'expenses');
+      markAsRead('friend', id, 'payments');
     }
     return () => {
       if (id) emit('leave_conversation', id);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, emit]);
+
+  // Mark chat as read when chat panel is opened
+  useEffect(() => {
+    if (isChatOpen && id) {
+      markAsRead('friend', id, 'chat');
+      emit('mark_read', id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isChatOpen, id]);
 
   useEffect(() => {
     const unsub1 = on('new_message', (msg) => {
-      setChat(prev => [...prev, msg as ChatMessage]);
-      emit('mark_read', id);
+      const incoming = msg as ChatMessage;
+      // Deduplicate: message may already be in state from optimistic HTTP response
+      setChat(prev => {
+        if (prev.some(m => m.id === incoming.id)) return prev;
+        return [...prev, incoming];
+      });
+      // Only mark as read when the chat panel is open AND the message is from the friend
+      if (isChatOpenRef.current && incoming.sender_id === id) {
+        emit('mark_read', id);
+      }
     });
     const unsub2 = on('user_typing', () => setIsTyping(true));
     const unsub3 = on('user_stop_typing', () => setIsTyping(false));
     
+    // Merge (not replace) so fields present in local state but absent in the
+    // raw DB row (e.g. sender_name) are preserved.
     const unsub4 = on('message_edited', (editedMsg: any) => {
-      setChat(prev => prev.map(m => m.id === editedMsg.id ? editedMsg : m));
+      setChat(prev => prev.map(m => m.id === editedMsg.id ? { ...m, ...editedMsg } : m));
     });
     const unsub5 = on('message_deleted', (deletedMsg: any) => {
-      setChat(prev => prev.map(m => m.id === deletedMsg.id ? deletedMsg : m));
+      setChat(prev => prev.map(m => m.id === deletedMsg.id ? { ...m, ...deletedMsg } : m));
     });
     const unsub6 = on('message_deleted_for_me', (data: any) => {
       setChat(prev => prev.filter(m => m.id !== data.messageId));
@@ -132,7 +161,15 @@ export const FriendDetail = () => {
     });
     
     return () => {
-      unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9();
+      if (unsub1) unsub1(); 
+      if (unsub2) unsub2(); 
+      if (unsub3) unsub3(); 
+      if (unsub4) unsub4(); 
+      if (unsub5) unsub5(); 
+      if (unsub6) unsub6(); 
+      if (unsub7) unsub7(); 
+      if (unsub8) unsub8(); 
+      if (unsub9) unsub9();
     };
   }, [on, emit, id]);
 
@@ -152,19 +189,34 @@ export const FriendDetail = () => {
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!msgInput.trim()) return;
-    try {
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      emit('stop_typing', id);
-      
-      if (editingMessageId) {
-        emit('edit_message', { messageId: editingMessageId, friendId: id, content: msgInput });
-        setEditingMessageId(null);
-      } else {
-        await apiClient.post(`/chat/${id}`, { content: msgInput });
-      }
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    emit('stop_typing', id);
+
+    if (editingMessageId) {
+      // Optimistic edit: update local state immediately so there is no visible delay.
+      // The server will confirm via 'message_edited' which merges any server-side fields.
+      const trimmed = msgInput.trim();
+      setChat(prev => prev.map(m =>
+        m.id === editingMessageId ? { ...m, content: trimmed, is_edited: true } : m
+      ));
+      emit('edit_message', { messageId: editingMessageId, friendId: id, content: trimmed });
+      setEditingMessageId(null);
       setMsgInput('');
-    } catch (err) {
-      toast.error('Failed to send message');
+    } else {
+      // Optimistic send: POST to REST; add the returned message object directly
+      // to state. The socket 'new_message' will also fire for the other party;
+      // the deduplication in the listener handles the sender's side.
+      try {
+        const trimmed = msgInput.trim();
+        setMsgInput('');
+        const response = await apiClient.post(`/chat/${id}`, { content: trimmed });
+        setChat(prev => {
+          if (prev.some(m => m.id === response.data.id)) return prev;
+          return [...prev, response.data as ChatMessage];
+        });
+      } catch (err) {
+        toast.error('Failed to send message');
+      }
     }
   };
 
@@ -179,7 +231,21 @@ export const FriendDetail = () => {
     showConfirm(
       'Delete Message',
       `Are you sure you want to delete this message ${forEveryone ? 'for everyone' : 'for yourself'}?`,
-      () => emit('delete_message', { messageId: msgId, friendId: id, forEveryone }),
+      () => {
+        if (forEveryone) {
+          // Optimistic: mark as deleted immediately so the sender doesn't wait
+          // for the socket round-trip. The server will confirm via 'message_deleted'.
+          setChat(prev => prev.map(m =>
+            m.id === msgId ? { ...m, content: '', is_deleted_for_everyone: true } : m
+          ));
+          emit('delete_message', { messageId: msgId, friendId: id, forEveryone: true });
+        } else {
+          // Optimistic: remove from local list immediately.
+          // The server confirms via 'message_deleted_for_me' (no-op if already gone).
+          setChat(prev => prev.filter(m => m.id !== msgId));
+          emit('delete_message', { messageId: msgId, friendId: id, forEveryone: false });
+        }
+      },
       'danger'
     );
   };
@@ -548,15 +614,23 @@ export const FriendDetail = () => {
          )}
        </div>
 
-       {!isChatOpen && (
-         <button 
-           onClick={() => setIsChatOpen(true)}
-           className="absolute bottom-6 right-6 p-4 bg-amber-500 text-black rounded-full shadow-[0_0_20px_rgba(245,158,11,0.4)] hover:bg-amber-400 transition-transform hover:scale-105 z-50 text-2xl"
-           title="Chat"
-         >
-           <MessageSquare className="w-6 h-6" />
-         </button>
-       )}
+       {!isChatOpen && (() => {
+         const unreadCount = getSectionCount('friend', id!, 'chat');
+         return (
+           <button 
+             onClick={() => setIsChatOpen(true)}
+             className="absolute bottom-6 right-6 p-4 bg-amber-500 text-black rounded-full shadow-[0_0_20px_rgba(245,158,11,0.4)] hover:bg-amber-400 transition-transform hover:scale-105 z-50 text-2xl"
+             title="Chat"
+           >
+             <MessageSquare className="w-6 h-6" />
+             {unreadCount > 0 && (
+               <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-[0_0_10px_rgba(244,63,94,0.5)]">
+                 {unreadCount > 99 ? '99+' : unreadCount}
+               </span>
+             )}
+           </button>
+         );
+       })()}
 
       <ExpenseModal 
         isOpen={isExpenseModalOpen}

@@ -5,12 +5,14 @@ import { useAuthStore } from '../../../app/store/useAuthStore';
 import { apiClient } from '../../../shared/api/axios';
 import { ConfirmModal } from '../../../shared/components/ConfirmModal';
 import { toast } from '../../../shared/store/useToastStore';
+import { useUnreadStore } from '../../../shared/store/useUnreadStore';
 
 interface GroupChatProps {
   groupId: string;
+  members: { id: string; display_name: string }[];
 }
 
-export const GroupChat: React.FC<GroupChatProps> = ({ groupId }) => {
+export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [chat, setChat] = useState<any[]>([]);
   const [input, setInput] = useState('');
@@ -21,6 +23,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId }) => {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const { emit, on } = useSocket();
   const currentUser = useAuthStore(s => s.user);
+  const { getSectionCount, markAsRead } = useUnreadStore();
   
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
@@ -38,6 +41,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId }) => {
     if (isOpen) {
       emit('join_group_room', groupId);
       emit('mark_group_delivered', groupId);
+      markAsRead('group', groupId, 'chat');
       
       apiClient.get(`/chat/group/${groupId}`).then(res => {
         setChat(res.data);
@@ -46,22 +50,40 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId }) => {
       emit('leave_group_room', groupId);
     }
     return () => emit('leave_group_room', groupId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, groupId, emit]);
 
   useEffect(() => {
     if (!isOpen) return;
     
     const unsub1 = on('new_group_message', (msg: any) => {
-      setChat(prev => [...prev, msg]);
+      setChat(prev => {
+        // Replace the optimistic temp message sent by the current user,
+        // or deduplicate if the real message is already present.
+        const tempIdx = prev.findIndex(
+          m => typeof m.id === 'string' && m.id.startsWith('temp_') &&
+               m.sender_id === msg.sender_id && m.content === msg.content
+        );
+        if (tempIdx >= 0) {
+          // Swap the temp placeholder for the real server message
+          const updated = [...prev];
+          updated[tempIdx] = msg;
+          return updated;
+        }
+        if (prev.some(m => m.id === msg.id)) return prev; // already present
+        return [...prev, msg];
+      });
       emit('mark_group_read', groupId);
     });
     const unsub2 = on('group_user_typing', () => setIsTyping(true));
     const unsub3 = on('group_user_stop_typing', () => setIsTyping(false));
+    // Merge (not replace) so fields present only in local state (e.g. sender_name)
+    // are preserved after the server confirms the edit.
     const unsub4 = on('group_message_edited', (editedMsg: any) => {
-      setChat(prev => prev.map(m => m.id === editedMsg.id ? editedMsg : m));
+      setChat(prev => prev.map(m => m.id === editedMsg.id ? { ...m, ...editedMsg } : m));
     });
     const unsub5 = on('group_message_deleted', (deletedMsg: any) => {
-      setChat(prev => prev.map(m => m.id === deletedMsg.id ? deletedMsg : m));
+      setChat(prev => prev.map(m => m.id === deletedMsg.id ? { ...m, ...deletedMsg } : m));
     });
     const unsub6 = on('group_message_deleted_for_me', (data: any) => {
       setChat(prev => prev.filter(m => m.id !== data.messageId));
@@ -69,7 +91,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId }) => {
     const unsub7 = on('group_message_delivered', (data: any) => {
       if (data.groupId === groupId) {
         setChat(prev => prev.map(m => {
-          const dt = m.delivered_to || [];
+          // Create a new array — never mutate the existing array in React state
+          const dt = [...(m.delivered_to || [])];
           if (!dt.includes(data.deliveredTo)) dt.push(data.deliveredTo);
           return { ...m, delivered_to: dt };
         }));
@@ -78,7 +101,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId }) => {
     const unsub8 = on('group_message_read', (data: any) => {
       if (data.groupId === groupId) {
         setChat(prev => prev.map(m => {
-          const rb = m.read_by || [];
+          // Create a new array — never mutate the existing array in React state
+          const rb = [...(m.read_by || [])];
           if (!rb.includes(data.readBy)) rb.push(data.readBy);
           return { ...m, read_by: rb };
         }));
@@ -89,7 +113,15 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId }) => {
     });
 
     return () => {
-      unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7(); unsub8(); unsub9();
+      if (unsub1) unsub1(); 
+      if (unsub2) unsub2(); 
+      if (unsub3) unsub3(); 
+      if (unsub4) unsub4(); 
+      if (unsub5) unsub5(); 
+      if (unsub6) unsub6(); 
+      if (unsub7) unsub7(); 
+      if (unsub8) unsub8(); 
+      if (unsub9) unsub9();
     };
   }, [isOpen, on, emit, groupId]);
 
@@ -113,11 +145,32 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId }) => {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     emit('group_stop_typing', groupId);
 
+    const trimmed = input.trim();
+
     if (editingMessageId) {
-      emit('edit_group_message', { messageId: editingMessageId, groupId, content: input });
+      // Optimistic edit: reflect the change immediately without waiting for server
+      setChat(prev => prev.map(m =>
+        m.id === editingMessageId ? { ...m, content: trimmed, is_edited: true } : m
+      ));
+      emit('edit_group_message', { messageId: editingMessageId, groupId, content: trimmed });
       setEditingMessageId(null);
     } else {
-      emit('send_group_message', { groupId, content: input });
+      // Optimistic send: create a temp message so the sender sees it instantly.
+      // The 'new_group_message' handler replaces it with the real server message.
+      const tempMsg = {
+        id: `temp_${Date.now()}`,
+        sender_id: currentUser?.id,
+        sender_name: currentUser?.displayName || 'You',
+        group_id: groupId,
+        content: trimmed,
+        created_at: new Date().toISOString(),
+        is_edited: false,
+        is_deleted_for_everyone: false,
+        read_by: [currentUser?.id],
+        delivered_to: [currentUser?.id],
+      };
+      setChat(prev => [...prev, tempMsg]);
+      emit('send_group_message', { groupId, content: trimmed });
     }
     
     setInput('');
@@ -134,12 +187,27 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId }) => {
     showConfirm(
       'Delete Message',
       `Are you sure you want to delete this message ${forEveryone ? 'for everyone' : 'for yourself'}?`,
-      () => emit('delete_group_message', { messageId: msgId, groupId, forEveryone }),
+      () => {
+        if (forEveryone) {
+          // Optimistic: mark as deleted immediately so the sender doesn't wait
+          // for the socket round-trip. The server confirms via 'group_message_deleted'.
+          setChat(prev => prev.map(m =>
+            m.id === msgId ? { ...m, content: '', is_deleted_for_everyone: true } : m
+          ));
+          emit('delete_group_message', { messageId: msgId, groupId, forEveryone: true });
+        } else {
+          // Optimistic: remove from local list immediately.
+          // The server confirms via 'group_message_deleted_for_me' (no-op if already gone).
+          setChat(prev => prev.filter(m => m.id !== msgId));
+          emit('delete_group_message', { messageId: msgId, groupId, forEveryone: false });
+        }
+      },
       'danger'
     );
   };
 
   if (!isOpen) {
+    const unreadCount = getSectionCount('group', groupId, 'chat');
     return (
       <button 
         onClick={() => setIsOpen(true)}
@@ -147,6 +215,11 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId }) => {
         title="Group Chat"
       >
         <MessageSquare className="w-6 h-6" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-[0_0_10px_rgba(244,63,94,0.5)]">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
       </button>
     );
   }
@@ -187,8 +260,33 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId }) => {
                        {msg.is_edited && <span className="text-[9px] font-bold tracking-widest uppercase mr-1">Edited</span>}
                        <span className="text-[9px]">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                        {isMe && (
-                         <div className="flex items-center">
-                           {msg.read_by?.length > 1 ? <CheckCheck className="w-3 h-3 text-sky-300" /> : msg.delivered_to?.length > 1 ? <CheckCheck className="w-3 h-3 text-white/50" /> : <Check className="w-3 h-3 text-white/50" />}
+                         <div className="flex items-center relative group/ticks">
+                           {(() => {
+                             const actualReaders = (msg.read_by || []).filter((id: string) => id !== msg.sender_id);
+                             const readerNames = actualReaders.map((id: string) => members.find(m => m.id === id)?.display_name).filter(Boolean);
+                             const totalOtherMembers = Math.max(0, members.length - 1);
+                             const isReadByAll = actualReaders.length >= totalOtherMembers && totalOtherMembers > 0;
+                             const isDeliveredToAny = (msg.delivered_to || []).filter((id: string) => id !== msg.sender_id).length > 0;
+                             
+                             return (
+                               <>
+                                 {isReadByAll ? (
+                                   <CheckCheck className="w-3 h-3 text-sky-300" />
+                                 ) : actualReaders.length > 0 || isDeliveredToAny ? (
+                                   <CheckCheck className="w-3 h-3 text-white/50" />
+                                 ) : (
+                                   <Check className="w-3 h-3 text-white/50" />
+                                 )}
+                                 
+                                 {actualReaders.length > 0 && (
+                                   <div className="absolute bottom-full right-0 mb-1 hidden group-hover/ticks:block w-max max-w-[200px] bg-zinc-900 border border-white/10 text-white text-[10px] p-2 rounded-lg shadow-xl z-50">
+                                     <span className="font-bold text-zinc-500 uppercase tracking-widest block mb-1 text-[9px]">Read by</span>
+                                     <span className="whitespace-normal leading-relaxed">{readerNames.join(', ')}</span>
+                                   </div>
+                                 )}
+                               </>
+                             );
+                           })()}
                          </div>
                        )}
                      </div>

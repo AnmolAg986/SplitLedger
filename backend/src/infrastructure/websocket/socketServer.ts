@@ -126,7 +126,8 @@ export function initSocketServer(httpServer: HttpServer) {
     socket.on('send_group_message', async (data: { groupId: string; content: string }) => {
       try {
         const message = await ChatRepository.sendGroupMessage(data.groupId, userId, data.content.trim());
-        io.to(`group_${data.groupId}`).emit('new_group_message', { ...message, sender_name: (socket as any).displayName || 'User' });
+        // sender_name is now included in the DB result via CTE JOIN
+        io.to(`group_${data.groupId}`).emit('new_group_message', message);
       } catch (err) {
         socket.emit('error', { message: 'Failed to send group message' });
       }

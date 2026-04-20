@@ -1,4 +1,5 @@
 import { pool } from '../../config/db';
+import { UnreadRepository } from './UnreadRepository';
 
 export class ChatRepository {
 
@@ -9,6 +10,7 @@ export class ChatRepository {
        RETURNING *`,
       [senderId, receiverId, content]
     );
+    await UnreadRepository.increment(receiverId, 'friend', senderId, 'chat');
     return res.rows[0];
   }
 
@@ -69,6 +71,7 @@ export class ChatRepository {
        WHERE receiver_id = $1 AND sender_id = $2 AND is_read = false`,
       [userId, friendId]
     );
+    await UnreadRepository.markAsRead(userId, 'friend', friendId, 'chat');
   }
 
   static async markAsDelivered(receiverId: string) {
@@ -94,11 +97,20 @@ export class ChatRepository {
   // --- Group Messages ---
   static async sendGroupMessage(groupId: string, senderId: string, content: string) {
     const res = await pool.query(
-      `INSERT INTO group_messages (group_id, sender_id, content)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
+      `WITH ins AS (
+         INSERT INTO group_messages (group_id, sender_id, content)
+         VALUES ($1, $2, $3)
+         RETURNING *
+       )
+       SELECT ins.*, u.display_name AS sender_name
+       FROM ins
+       JOIN users u ON ins.sender_id = u.id`,
       [groupId, senderId, content]
     );
+    const membersRes = await pool.query(`SELECT user_id FROM group_members WHERE group_id = $1 AND user_id != $2`, [groupId, senderId]);
+    for (const member of membersRes.rows) {
+      await UnreadRepository.increment(member.user_id, 'group', groupId, 'chat');
+    }
     return res.rows[0];
   }
 
@@ -165,5 +177,6 @@ export class ChatRepository {
        WHERE group_id = $2 AND NOT ($1 = ANY(read_by))`,
       [userId, groupId]
     );
+    await UnreadRepository.markAsRead(userId, 'group', groupId, 'chat');
   }
 }

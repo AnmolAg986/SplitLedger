@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../shared/api/axios';
-import { UserPlus, Search, Trophy, Flame, Loader2, Receipt, X, Link, ArrowRight, Clock } from 'lucide-react';
+import { UserPlus, Search, Trophy, Flame, Loader2, Receipt, X, Link, Clock } from 'lucide-react';
 import { CreateExpenseModal } from '../../../shared/components/CreateExpenseModal';
 import { useAuthStore } from '../../../app/store/useAuthStore';
 import { InviteModal } from '../../../shared/components/InviteModal';
+import { useUnreadStore } from '../../../shared/store/useUnreadStore';
 
 export const Friends = () => {
   const navigate = useNavigate();
   const currentUser = useAuthStore(state => state.user);
+  const getEntityCount = useUnreadStore(state => state.getEntityCount);
   
   const [friends, setFriends] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
@@ -54,7 +56,6 @@ export const Friends = () => {
       setFriends(friendsRes.data);
       setInsights(insightsRes.data);
       setPendingRequests(pendingRes.data);
-      setRecentFriends(recentRes.data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -274,6 +275,12 @@ export const Friends = () => {
                       {/* Glow effect on hover */}
                       <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                       
+                      {getEntityCount('friend', f.id) > 0 && (
+                        <div className="absolute top-3 right-3 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow-[0_0_10px_rgba(244,63,94,0.5)] z-20">
+                          {getEntityCount('friend', f.id) > 99 ? '99+' : getEntityCount('friend', f.id)}
+                        </div>
+                      )}
+
                       <div className="flex justify-between items-start mb-5 relative z-10 w-full">
                         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center border border-amber-500/30 group-hover:scale-105 transition-transform shadow-[0_0_15px_rgba(245,158,11,0.15)] overflow-hidden">
                           {f.avatar_url ? (
