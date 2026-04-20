@@ -1,10 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Search, UserPlus, CreditCard, Users, ArrowRight } from 'lucide-react';
+import { Search, UserPlus, CreditCard, Users, ArrowRight, Clock, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const CommandPalette = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('recentSearches') || '[]');
+    } catch {
+      return [];
+    }
+  });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -45,7 +52,7 @@ export const CommandPalette = () => {
       icon: Users, 
       colorClass: 'text-blue-400', 
       bgClass: 'bg-blue-500/10 border-blue-500/20 group-hover:bg-blue-500/20',
-      route: '/groups' 
+      route: '/connections?tab=groups' 
     },
     { 
       id: 'friend', 
@@ -53,13 +60,37 @@ export const CommandPalette = () => {
       icon: UserPlus, 
       colorClass: 'text-purple-400', 
       bgClass: 'bg-purple-500/10 border-purple-500/20 group-hover:bg-purple-500/20',
-      route: '/groups' 
+      route: '/connections?tab=friends' 
     },
   ];
 
   const filteredActions = actions.filter(action => 
     action.title.toLowerCase().includes(query.toLowerCase())
   );
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && query.trim()) {
+      saveSearch(query.trim());
+      // Optionally trigger the first action if there's an exact match or just 1 filtered action
+      if (filteredActions.length === 1) {
+        setIsOpen(false);
+        navigate(filteredActions[0].route);
+      }
+    }
+  };
+
+  const saveSearch = (searchQuery: string) => {
+    const updated = [searchQuery, ...recentSearches.filter(s => s.toLowerCase() !== searchQuery.toLowerCase())].slice(0, 5);
+    setRecentSearches(updated);
+    localStorage.setItem('recentSearches', JSON.stringify(updated));
+  };
+
+  const removeSearch = (e: React.MouseEvent, searchQuery: string) => {
+    e.stopPropagation();
+    const updated = recentSearches.filter(s => s !== searchQuery);
+    setRecentSearches(updated);
+    localStorage.setItem('recentSearches', JSON.stringify(updated));
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]">
@@ -80,14 +111,44 @@ export const CommandPalette = () => {
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
             className="w-full bg-transparent text-white placeholder-zinc-500 text-[15px] font-medium outline-none"
-            placeholder="Search or jump to..." 
+            placeholder="Search or jump to... (Press Enter to save search)" 
           />
           <div className="shrink-0 text-[10px] uppercase font-bold tracking-widest text-zinc-500 bg-white/5 px-2 py-1 rounded shadow-inner ml-2">ESC</div>
         </div>
 
         {/* Action List */}
         <div className="p-2 space-y-1 max-h-[60vh] overflow-y-auto">
+          {query === '' && recentSearches.length > 0 && (
+            <div className="mb-4">
+              <div className="px-3 py-2.5 text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">
+                Recent Searches
+              </div>
+              {recentSearches.map((search, idx) => (
+                <button
+                  key={`recent-${idx}`}
+                  onClick={() => setQuery(search)}
+                  className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl hover:bg-white/5 focus:bg-white/5 outline-none transition-all group cursor-pointer text-left mb-1"
+                >
+                  <div className="flex items-center gap-3">
+                    <Clock className="h-4 w-4 text-zinc-500 group-hover:text-zinc-300 transition-colors" />
+                    <span className="text-[14px] text-zinc-300 group-hover:text-white font-medium transition-colors">
+                      {search}
+                    </span>
+                  </div>
+                  <div 
+                    onClick={(e) => removeSearch(e, search)}
+                    className="p-1 rounded-md text-zinc-600 hover:bg-white/10 hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Remove from history"
+                  >
+                    <X className="h-4 w-4" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
           {filteredActions.length > 0 ? (
             <>
               <div className="px-3 py-2.5 text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">

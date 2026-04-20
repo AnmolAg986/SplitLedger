@@ -12,6 +12,8 @@ import groupRoutes from './infrastructure/http/routes/groupRoutes';
 import expenseRoutes from './infrastructure/http/routes/expenseRoutes';
 import settlementRoutes from './infrastructure/http/routes/settlementRoutes';
 import chatRoutes from './infrastructure/http/routes/chatRoutes';
+import uploadRoutes from './infrastructure/http/routes/uploadRoutes';
+import path from 'path';
 import { initSocketServer } from './infrastructure/websocket/socketServer';
 import { startReminderJob } from './infrastructure/cron/reminderJob';
 import { startRecurringExpenseJob } from './infrastructure/cron/RecurringExpenseJob';
@@ -37,6 +39,9 @@ app.use('/groups', groupRoutes);
 app.use('/expenses', expenseRoutes);
 app.use('/settlements', settlementRoutes);
 app.use('/chat', chatRoutes);
+app.use('/upload', uploadRoutes);
+
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', (req, res) => {
   res.status(200).send('OK');

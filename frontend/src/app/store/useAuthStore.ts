@@ -6,6 +6,7 @@ interface User {
   email: string | null;
   phoneNumber?: string | null;
   displayName: string;
+  avatarUrl?: string | null;
   loginCount: number;
 }
 

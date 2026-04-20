@@ -271,4 +271,35 @@ export class AuthController {
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
+
+  static async updateProfile(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const { displayName, avatarUrl } = req.body;
+      if (!displayName || displayName.trim().length < 2) {
+        return res.status(400).json({ error: 'Display name must be at least 2 characters long' });
+      }
+
+      const updatedUser = await UserRepository.updateProfile(userId, displayName.trim(), avatarUrl || null);
+      if (!updatedUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      return res.status(200).json({
+        user: {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          phoneNumber: updatedUser.phoneNumber,
+          displayName: updatedUser.displayName,
+          avatarUrl: updatedUser.avatarUrl,
+          loginCount: updatedUser.loginCount
+        }
+      });
+    } catch (e) {
+      console.error('[AuthController] updateProfile error:', e);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
 }

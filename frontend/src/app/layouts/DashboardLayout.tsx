@@ -1,13 +1,30 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Activity, LayoutDashboard, Settings, PanelLeft, PanelLeftClose, LogOut, Users, Receipt, User, Clock, UserCheck, Layers } from 'lucide-react';
+import { Activity, LayoutDashboard, Settings, PanelLeft, PanelLeftClose, LogOut, Users, Receipt, User, Clock } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { CommandPalette } from '../../features/dashboard/components/CommandPalette';
+import { useSocket } from '../../shared/hooks/useSocket';
+import { toast } from '../../shared/store/useToastStore';
 
 export const DashboardLayout = () => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const { on } = useSocket();
+
+  React.useEffect(() => {
+    const unsub = on('notification', (data: any) => {
+      if (data.type === 'reminder') {
+        toast.info(data.message); // using info or success from custom toast
+      } else {
+        toast.success(data.message);
+      }
+    });
+
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [on]);
 
   // We will build the full Command Palette logic in the next phase!
   // For now, it will be visually integrated into the sidebar.
@@ -20,8 +37,7 @@ export const DashboardLayout = () => {
   const menuItems = [
     { name: 'Dashboard', icon: LayoutDashboard, path: '/' },
     { name: 'Activity', icon: Clock, path: '/activity', badge: '3' },
-    { name: 'Friends', icon: UserCheck, path: '/friends' },
-    { name: 'Groups', icon: Layers, path: '/groups' },
+    { name: 'Connections', icon: Users, path: '/connections' },
     { name: 'Expenses', icon: Receipt, path: '/expenses' },
     { name: 'Profile', icon: User, path: '/profile' },
   ];
@@ -135,9 +151,17 @@ export const DashboardLayout = () => {
         </div>
 
         {/* Persistent User Profile & Logout section */}
-        <div className={`p-4 border-t border-white/10 bg-[#0a0a0c] flex items-center ${isCollapsed ? 'justify-center flex-col gap-4' : 'justify-between'}`}>
+        <div className={`p-4 border-t border-white/10 bg-[#0a0a0c] flex items-center ${isCollapsed ? 'justify-center flex-col gap-4' : 'gap-3'}`}>
+          <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white shrink-0 overflow-hidden">
+            {user?.avatarUrl ? (
+              <img src={`http://localhost:3000${user.avatarUrl}`} alt={user?.displayName} className="w-full h-full object-cover" />
+            ) : (
+              user?.displayName?.charAt(0)?.toUpperCase()
+            )}
+          </div>
+          
           {!isCollapsed && (
-            <div className="flex flex-col whitespace-nowrap overflow-hidden pr-2">
+            <div className="flex-1 flex flex-col whitespace-nowrap overflow-hidden pr-2">
               <span className="text-[13px] font-bold text-white leading-tight truncate">
                 {user?.displayName || 'Unknown User'}
               </span>

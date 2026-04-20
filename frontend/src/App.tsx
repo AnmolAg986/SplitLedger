@@ -8,12 +8,12 @@ import { ProtectedRoute } from './app/routes/ProtectedRoute';
 import { DashboardLayout } from './app/layouts/DashboardLayout';
 import { Dashboard } from './features/dashboard/pages/Dashboard';
 
-import { Friends } from './features/friends/pages/Friends';
 import { FriendDetail } from './features/friends/pages/FriendDetail';
-import { Groups } from './features/groups/pages/Groups';
 import { GroupDetail } from './features/groups/pages/GroupDetail';
 import { JoinGroup } from './features/groups/pages/JoinGroup';
 import { Activity } from './features/dashboard/pages/Activity';
+import { Profile } from './features/dashboard/pages/Profile';
+import { Connections } from './features/connections/pages/Connections';
 import { ToastContainer } from './shared/components/ToastContainer';
 
 export const App = () => {
@@ -33,12 +33,16 @@ export const App = () => {
             
             <Route path="/" element={<Dashboard />} />
             
-            <Route path="/friends" element={<Friends />} />
+            <Route path="/connections" element={<Connections />} />
             <Route path="/friends/:id" element={<FriendDetail />} />
-            <Route path="/groups" element={<Groups />} />
             <Route path="/groups/:id" element={<GroupDetail />} />
             <Route path="/join/:token" element={<JoinGroup />} />
             <Route path="/activity" element={<Activity />} />
+            <Route path="/profile" element={<Profile />} />
+
+            {/* Legacy redirects */}
+            <Route path="/friends" element={<Navigate to="/connections?tab=friends" replace />} />
+            <Route path="/groups" element={<Navigate to="/connections?tab=groups" replace />} />
 
           </Route>
         </Route>
