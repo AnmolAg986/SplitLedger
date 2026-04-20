@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
+import { errorHandler } from './infrastructure/http/middleware/errorHandler';
+import { env } from './config/env';
 
 import authRoutes from './infrastructure/http/routes/authRoutes';
 import dashboardRoutes from './infrastructure/http/routes/dashboardRoutes';
@@ -13,16 +15,33 @@ import expenseRoutes from './infrastructure/http/routes/expenseRoutes';
 import settlementRoutes from './infrastructure/http/routes/settlementRoutes';
 import chatRoutes from './infrastructure/http/routes/chatRoutes';
 import uploadRoutes from './infrastructure/http/routes/uploadRoutes';
+import unreadRoutes from './infrastructure/http/routes/unreadRoutes';
 import path from 'path';
 import { initSocketServer } from './infrastructure/websocket/socketServer';
 import { startReminderJob } from './infrastructure/cron/reminderJob';
 import { startRecurringExpenseJob } from './infrastructure/cron/RecurringExpenseJob';
+import { globalLimiter } from './infrastructure/http/middleware/rateLimiter';
+import { requestIdMiddleware } from './infrastructure/http/middleware/requestId';
+import pinoHttp from 'pino-http';
+import { logger } from './shared/utils/logger';
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = env.PORT;
+
+// Apply global rate limiter
+app.use(globalLimiter);
+
+// Add Request ID
+app.use(requestIdMiddleware);
+
+// Add HTTP logger
+app.use(pinoHttp({ 
+  logger,
+  genReqId: (req) => req.id 
+}));
 
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:3000'],
+  origin: [env.CORS_ORIGIN, 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:3000'],
   credentials: true
 }));
 app.use(express.json());
@@ -40,12 +59,23 @@ app.use('/expenses', expenseRoutes);
 app.use('/settlements', settlementRoutes);
 app.use('/chat', chatRoutes);
 app.use('/upload', uploadRoutes);
+app.use('/unread', unreadRoutes);
 
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
+import { pool } from './config/db';
+
+app.get('/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.status(200).json({ db: 'ok', uptime: process.uptime() });
+  } catch (err) {
+    res.status(503).json({ db: 'error', uptime: process.uptime(), error: err });
+  }
 });
+
+// Error handling middleware should be the last app.use()
+app.use(errorHandler);
 
 // Create HTTP server
 const httpServer = createServer(app);

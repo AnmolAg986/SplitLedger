@@ -1,142 +1,121 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../types/Request';
-import { ExpenseRepository, CreateExpenseInput } from '../../persistence/ExpenseRepository';
-import { FriendRepository } from '../../persistence/FriendRepository';
+import { ExpenseService, CreateExpenseServiceInput } from '../../../application/services/ExpenseService';
 import { RecurringExpenseRepository } from '../../persistence/RecurringExpenseRepository';
-import { ioInstance } from '../../websocket/socketServer';
+import { AppError } from '../../../shared/errors/AppError';
 
 export class ExpenseController {
 
-  static async createExpense(req: AuthenticatedRequest, res: Response) {
+  static async createExpense(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const userId = req.user?.id;
-      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+      if (!userId) throw new AppError(401, 'UNAUTHORIZED', 'Unauthorized');
 
-      const { groupId, paidBy, amount, currency, description, splitType, category, dueDate, splits } = req.body;
+      const { groupId, paidBy, amount, currency, description, splitType, category, dueDate, participants, splits } = req.body;
 
-      if (!amount || !description || !splits || splits.length === 0) {
-        return res.status(400).json({ error: 'Amount, description, and splits are required' });
+      if (!amount || !description) {
+        throw new AppError(400, 'BAD_REQUEST', 'Amount and description are required');
+      }
+      
+      // Support legacy splits format from frontend if participants is not provided
+      const finalParticipants = participants || (splits ? splits.map((s: any) => ({
+        userId: s.userId || s.user_id,
+        value: s.value !== undefined ? s.value : s.amount
+      })) : []);
+
+      if (finalParticipants.length === 0) {
+        throw new AppError(400, 'BAD_REQUEST', 'Participants are required');
       }
 
-      const input: CreateExpenseInput = {
+      const input: CreateExpenseServiceInput = {
         groupId: groupId || null,
         paidBy: paidBy || userId,
-        amount,
+        amount: Number(amount),
         currency: currency || 'INR',
         description,
         splitType: splitType || 'equal',
         category,
         dueDate,
         createdBy: userId,
-        splits
+        participants: finalParticipants
       };
 
-      const expense = await ExpenseRepository.createExpense(input);
-
-      // Update spending streaks for all split participants
-      for (const split of splits) {
-        if (split.userId !== userId) {
-          try {
-            await FriendRepository.updateStreak(userId, split.userId);
-          } catch {
-            // Streak update is non-critical
-          }
-        }
-      }
-
+      const expense = await ExpenseService.createExpense(input);
       return res.status(201).json(expense);
     } catch (err) {
-      console.error('[ExpenseController] createExpense error:', err);
-      return res.status(500).json({ error: 'Internal server error' });
+      next(err);
     }
   }
 
-  static async getExpense(req: AuthenticatedRequest, res: Response) {
+  static async getExpense(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const userId = req.user?.id;
-      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+      if (!userId) throw new AppError(401, 'UNAUTHORIZED', 'Unauthorized');
 
       const id = req.params.id as string;
-      const expense = await ExpenseRepository.getExpenseById(id);
-      if (!expense) return res.status(404).json({ error: 'Expense not found' });
+      const expense = await ExpenseService.getExpense(id);
 
       return res.status(200).json(expense);
     } catch (err) {
-      console.error('[ExpenseController] getExpense error:', err);
-      return res.status(500).json({ error: 'Internal server error' });
+      next(err);
     }
   }
 
-  static async deleteExpense(req: AuthenticatedRequest, res: Response) {
+  static async deleteExpense(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const userId = req.user?.id;
-      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+      if (!userId) throw new AppError(401, 'UNAUTHORIZED', 'Unauthorized');
 
       const id = req.params.id as string;
-      const deleted = await ExpenseRepository.deleteExpense(id, userId);
-      if (!deleted) return res.status(404).json({ error: 'Expense not found or not authorized' });
+      await ExpenseService.deleteExpense(id, userId);
 
       return res.status(200).json({ message: 'Expense deleted' });
     } catch (err) {
-      console.error('[ExpenseController] deleteExpense error:', err);
-      return res.status(500).json({ error: 'Internal server error' });
+      next(err);
     }
   }
 
-  static async updateExpense(req: AuthenticatedRequest, res: Response) {
+  static async updateExpense(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const userId = req.user?.id;
-      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+      if (!userId) throw new AppError(401, 'UNAUTHORIZED', 'Unauthorized');
 
       const id = req.params.id as string;
       const updates = req.body;
+      
+      if (updates.splits && !updates.participants) {
+         updates.participants = updates.splits.map((s: any) => ({
+            userId: s.userId || s.user_id,
+            value: s.value !== undefined ? s.value : s.amount
+         }));
+      }
 
-      const updated = await ExpenseRepository.updateExpense(id, userId, updates);
-      if (!updated) return res.status(404).json({ error: 'Expense not found or not authorized' });
+      const updated = await ExpenseService.updateExpense(id, userId, updates);
 
       return res.status(200).json(updated);
     } catch (err) {
-      console.error('[ExpenseController] updateExpense error:', err);
-      return res.status(500).json({ error: 'Internal server error' });
+      next(err);
     }
   }
 
-  static async remindExpense(req: AuthenticatedRequest, res: Response) {
+  static async remindExpense(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const userId = req.user?.id;
-      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+      if (!userId) throw new AppError(401, 'UNAUTHORIZED', 'Unauthorized');
 
       const id = req.params.id as string;
-      const expense = await ExpenseRepository.getExpenseById(id);
-      if (!expense) return res.status(404).json({ error: 'Expense not found' });
-
-      // Identify who owes money for this expense
-      // Send socket notifications to the users who owe money
-      for (const split of expense.splits) {
-        if (!split.is_paid && split.user_id !== expense.paid_by) {
-          if (ioInstance) {
-            ioInstance.to(split.user_id).emit('notification', {
-              type: 'reminder',
-              message: `Reminder to settle up: ${expense.description}`,
-              expenseId: id
-            });
-          }
-        }
-      }
-
-      await ExpenseRepository.recordReminderSent(id);
+      await ExpenseService.remindExpense(id, userId);
 
       return res.status(200).json({ message: 'Reminders sent successfully' });
     } catch (err) {
-      console.error('[ExpenseController] remindExpense error:', err);
-      return res.status(500).json({ error: 'Internal server error' });
+      next(err);
     }
   }
 
-  static async createRecurringTemplate(req: AuthenticatedRequest, res: Response) {
+  static async createRecurringTemplate(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const userId = req.user?.id;
-      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+      if (!userId) throw new AppError(401, 'UNAUTHORIZED', 'Unauthorized');
 
       const { groupId, template, frequency } = req.body;
       const next_run_at = new Date();
@@ -158,8 +137,7 @@ export class ExpenseController {
 
       return res.status(201).json({ message: 'Recurring template created' });
     } catch (err) {
-      console.error('[ExpenseController] createRecurring error:', err);
-      return res.status(500).json({ error: 'Internal server error' });
+      next(err);
     }
   }
 }

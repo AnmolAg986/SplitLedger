@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { FriendController } from '../controllers/FriendController';
 import { requireAuth } from '../middleware/authMiddleware';
+import { nudgeLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -14,7 +15,7 @@ router.get('/insights', requireAuth, FriendController.getInsights);
 
 router.get('/recent', requireAuth, FriendController.getRecentFriends);
 router.post('/nickname', requireAuth, FriendController.setNickname);
-router.post('/:friendId/nudge', requireAuth, FriendController.nudgeFriend);
+router.post('/:friendId/nudge', requireAuth, nudgeLimiter, FriendController.nudgeFriend);
 router.get('/:friendId', requireAuth, FriendController.getFriendDetail);
 
 export default router;

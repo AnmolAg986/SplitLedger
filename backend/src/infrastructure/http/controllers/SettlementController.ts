@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types/Request';
 import { SettlementRepository } from '../../persistence/SettlementRepository';
 import { FriendRepository } from '../../persistence/FriendRepository';
+import { UnreadRepository } from '../../persistence/UnreadRepository';
+import { ioInstance } from '../../websocket/socketServer';
 
 export class SettlementController {
 
@@ -24,6 +26,21 @@ export class SettlementController {
       await SettlementRepository.settleUpBetween(userId, toUser);
       await SettlementRepository.settleUpBetween(toUser, userId);
 
+      try {
+        await UnreadRepository.increment(toUser, groupId ? 'group' : 'friend', groupId || userId, 'payments');
+        if (ioInstance) {
+          ioInstance.to(toUser).emit('unread_update', {
+            type: 'unread_update',
+            entity_type: groupId ? 'group' : 'friend',
+            entity_id: groupId || userId,
+            section: 'payments',
+            delta: 1
+          });
+        }
+      } catch (e) {
+        console.error('Failed to update unread counts:', e);
+      }
+
       return res.status(201).json(settlement);
     } catch (err) {
       console.error('[SettlementController] createSettlement error:', err);
@@ -42,6 +59,21 @@ export class SettlementController {
       // Mark all debts in both directions as paid
       await SettlementRepository.settleUpBetween(userId, friendId);
       await SettlementRepository.settleUpBetween(friendId, userId);
+
+      try {
+        await UnreadRepository.increment(friendId, 'friend', userId, 'payments');
+        if (ioInstance) {
+          ioInstance.to(friendId).emit('unread_update', {
+            type: 'unread_update',
+            entity_type: 'friend',
+            entity_id: userId,
+            section: 'payments',
+            delta: 1
+          });
+        }
+      } catch (e) {
+        console.error('Failed to update unread counts:', e);
+      }
 
       return res.status(200).json({ message: 'All mutual debts settled successfully' });
     } catch (err) {

@@ -1,7 +1,8 @@
 import { Pool } from 'pg';
+import { env } from './env';
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgres://sl:sl@localhost:5432/splitledger',
+  connectionString: env.DATABASE_URL,
 });
 
 pool.on('error', (err) => {

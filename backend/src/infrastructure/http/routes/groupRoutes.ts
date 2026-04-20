@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { GroupController } from '../controllers/GroupController';
 import { requireAuth } from '../middleware/authMiddleware';
+import { nudgeLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -28,6 +29,6 @@ router.post('/:id/members/:userId/reject', requireAuth, GroupController.rejectMe
 
 router.post('/:id/settle-all', requireAuth, require('../controllers/SettlementController').SettlementController.settleAllGroupMutual);
 
-router.post('/:id/nudge/:userId', (req, res) => GroupController.nudgeMember(req as any, res));
+router.post('/:id/nudge/:userId', requireAuth, nudgeLimiter, (req, res) => GroupController.nudgeMember(req as any, res));
 
 export default router;

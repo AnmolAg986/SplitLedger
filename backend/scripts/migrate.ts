@@ -10,6 +10,13 @@ async function migrate() {
 
   const client = await pool.connect();
   try {
+    // Obtain advisory lock
+    const lockResult = await client.query('SELECT pg_try_advisory_lock(1) as lock_acquired');
+    if (!lockResult.rows[0].lock_acquired) {
+      console.log('Another migration process is currently running. Exiting...');
+      return;
+    }
+
     // Create migrations table if not exists
     await client.query(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -47,6 +54,11 @@ async function migrate() {
   } catch (err) {
     console.error('Migration process failed:', err);
   } finally {
+    try {
+      await client.query('SELECT pg_advisory_unlock(1)');
+    } catch (e) {
+      // ignore
+    }
     client.release();
     await pool.end();
   }
