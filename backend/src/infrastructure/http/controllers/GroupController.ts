@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types/Request';
 import { GroupRepository } from '../../persistence/GroupRepository';
 import { RecurringExpenseRepository } from '../../persistence/RecurringExpenseRepository';
+import { UserRepository } from '../../persistence/UserRepository';
+import { DebtSimplificationService } from '../../../shared/services/DebtSimplificationService';
 
 export class GroupController {
 
@@ -127,6 +129,57 @@ export class GroupController {
     }
   }
 
+  static async getGroupSimplifications(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const groupId = req.params.id as string;
+      const isMember = await GroupRepository.isGroupMember(groupId, userId);
+      if (!isMember) return res.status(403).json({ error: 'Not a member of this group' });
+
+      const { pool } = require('../../config/db');
+      const client = await pool.connect();
+      try {
+        const result = await client.query(`
+          SELECT 
+            es.user_id as from_user,
+            e.paid_by as to_user,
+            es.amount
+          FROM expense_splits es
+          JOIN expenses e ON e.id = es.expense_id
+          WHERE e.group_id = $1 AND es.is_paid = false AND e.deleted_at IS NULL
+        `, [groupId]);
+
+        const transactions = result.rows.map((r: any) => ({
+          from: r.from_user,
+          to: r.to_user,
+          amount: parseFloat(r.amount)
+        }));
+
+        const simplified = DebtSimplificationService.simplify(transactions);
+
+        // Enhance with display names
+        const enriched = await Promise.all(simplified.map(async (s) => {
+          const fromUser = await UserRepository.findById(s.from);
+          const toUser = await UserRepository.findById(s.to);
+          return {
+            ...s,
+            from_name: fromUser?.displayName || s.from,
+            to_name: toUser?.displayName || s.to
+          };
+        }));
+
+        return res.status(200).json(enriched);
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      console.error('[GroupController] getGroupSimplifications error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
   static async addGroupMember(req: AuthenticatedRequest, res: Response) {
     try {
       const requesterId = req.user?.id;
@@ -216,8 +269,12 @@ export class GroupController {
       const isMember = await GroupRepository.isGroupMember(group.id, userId);
       if (isMember) return res.status(200).json({ message: 'Already a member', groupId: group.id });
 
-      await GroupRepository.addMember(group.id, userId);
-      return res.status(200).json({ message: 'Joined successfully', groupId: group.id });
+      const status = group.requires_approval ? 'pending' : 'accepted';
+      await GroupRepository.addMember(group.id, userId, status);
+      return res.status(200).json({ 
+        message: status === 'pending' ? 'Join request sent. Pending admin approval.' : 'Joined successfully', 
+        groupId: group.id 
+      });
     } catch (err) {
       console.error('[GroupController] joinGroupByToken error:', err);
       return res.status(500).json({ error: 'Internal server error' });
@@ -257,12 +314,12 @@ export class GroupController {
       if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
 
       const groupId = req.params.id as string;
-      const { name, description, avatarUrl } = req.body;
+      const { name, description, avatarUrl, requires_approval } = req.body;
 
       const role = await GroupRepository.getGroupMemberRole(groupId, requesterId);
       if (role !== 'admin') return res.status(403).json({ error: 'Admin permissions required' });
 
-      await GroupRepository.updateGroupDetails(groupId, { name, description, avatarUrl });
+      await GroupRepository.updateGroupDetails(groupId, { name, description, avatarUrl, requiresApproval: requires_approval });
       return res.status(200).json({ message: 'Group updated' });
     } catch (err) {
       console.error('[GroupController] updateGroup error:', err);
@@ -316,6 +373,71 @@ export class GroupController {
       return res.status(200).json({ message: 'Template deactivated' });
     } catch (err) {
       console.error('[GroupController] deleteTemplate error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async approveMember(req: AuthenticatedRequest, res: Response) {
+    try {
+      const requesterId = req.user?.id;
+      if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const groupId = req.params.id as string;
+      const targetUserId = req.params.userId as string;
+
+      const role = await GroupRepository.getGroupMemberRole(groupId, requesterId);
+      if (role !== 'admin') return res.status(403).json({ error: 'Admin permissions required' });
+
+      await GroupRepository.updateMemberStatus(groupId, targetUserId, 'accepted');
+      return res.status(200).json({ message: 'Member approved' });
+    } catch (err) {
+      console.error('[GroupController] approveMember error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async rejectMember(req: AuthenticatedRequest, res: Response) {
+    try {
+      const requesterId = req.user?.id;
+      if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const groupId = req.params.id as string;
+      const targetUserId = req.params.userId as string;
+
+      const role = await GroupRepository.getGroupMemberRole(groupId, requesterId);
+      if (role !== 'admin') return res.status(403).json({ error: 'Admin permissions required' });
+
+      await GroupRepository.removeMember(groupId, targetUserId);
+      return res.status(200).json({ message: 'Member rejected' });
+    } catch (err) {
+      console.error('[GroupController] rejectMember error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async nudgeMember(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const groupId = req.params.id as string;
+      const targetUserId = req.params.userId as string;
+      const { amount } = req.body;
+
+      const group = await GroupRepository.getGroupDetail(groupId);
+      
+      const { ioInstance } = require('../../websocket/socketServer');
+      if (ioInstance) {
+        ioInstance.to(targetUserId).emit('notification', {
+          type: 'reminder',
+          message: `Reminder for ${group?.name || 'Group'}: You have a pending balance of ₹${amount}.`,
+          groupId
+        });
+      }
+
+      return res.status(200).json({ message: 'Nudge sent successfully' });
+    } catch (err) {
+      console.error('[GroupController] nudgeMember error:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }

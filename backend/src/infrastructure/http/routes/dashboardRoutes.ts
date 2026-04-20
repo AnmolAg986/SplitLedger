@@ -6,6 +6,7 @@ const router = Router();
 
 // Retrieve all dashboard blocks in one unified request
 router.get('/summary', requireAuth, DashboardController.getSummary);
+router.get('/connections', requireAuth, DashboardController.getConnectionsActivity);
 
 // ── Phase 3+: Uncomment when reaching those phases ──
 // router.get('/activity', requireAuth, DashboardController.getFullActivity);

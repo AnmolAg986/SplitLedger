@@ -1,24 +1,47 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../shared/api/axios';
-import { UserPlus, Search, Trophy, Flame, Loader2, Receipt, X } from 'lucide-react';
+import { UserPlus, Search, Trophy, Flame, Loader2, Receipt, X, Link, ArrowRight, Clock } from 'lucide-react';
 import { CreateExpenseModal } from '../../../shared/components/CreateExpenseModal';
 import { useAuthStore } from '../../../app/store/useAuthStore';
+import { InviteModal } from '../../../shared/components/InviteModal';
 
 export const Friends = () => {
   const navigate = useNavigate();
   const currentUser = useAuthStore(state => state.user);
   
   const [friends, setFriends] = useState<any[]>([]);
-  const [recentFriends, setRecentFriends] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [insights, setInsights] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [addIdentifier, setAddIdentifier] = useState('');
+
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('friendsRecentSearches') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const saveSearch = (query: string) => {
+    if (!query.trim()) return;
+    const updated = [query.trim(), ...recentSearches.filter(s => s.toLowerCase() !== query.trim().toLowerCase())].slice(0, 5);
+    setRecentSearches(updated);
+    localStorage.setItem('friendsRecentSearches', JSON.stringify(updated));
+  };
+
+  const removeSearch = (e: React.MouseEvent, query: string) => {
+    e.stopPropagation();
+    const updated = recentSearches.filter(s => s !== query);
+    setRecentSearches(updated);
+    localStorage.setItem('friendsRecentSearches', JSON.stringify(updated));
+  };
 
   const fetchFriends = async () => {
     try {
@@ -83,229 +106,235 @@ export const Friends = () => {
   );
 
   return (
-    <div className="flex h-full w-full overflow-hidden">
-      
-      {/* 1. LEFT COLUMN: Friends List */}
-      <div className="w-[300px] border-r border-white/10 flex flex-col bg-black/20 shrink-0">
-        <div className="p-4 border-b border-white/10 flex items-center justify-between min-h-[64px]">
-          {isSearchOpen ? (
-            <div className="relative flex-1 animate-in slide-in-from-left-2 duration-200">
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
-              <input 
-                autoFocus
-                type="text" 
-                placeholder="Search friends..." 
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-8 py-2 text-[13px] text-white placeholder:text-zinc-500 focus:outline-none focus:border-white/20 transition-colors"
-              />
-              <button 
-                onClick={() => {
-                  setSearch('');
-                  setIsSearchOpen(false);
-                }}
-                className="absolute right-2 top-2 p-1 hover:bg-white/10 rounded-full transition-colors text-zinc-500 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            <>
-              <h2 className="text-white font-semibold">Friends</h2>
-              <div className="flex items-center gap-1">
-                <button 
-                  onClick={() => setIsSearchOpen(true)}
-                  className="p-2 hover:bg-white/10 rounded-full transition-colors text-zinc-400 hover:text-white"
-                >
-                  <Search className="w-4 h-4" />
-                </button>
-                <button 
-                  onClick={() => setShowAddModal(true)}
-                  className="p-2 hover:bg-white/10 rounded-full transition-colors group"
-                  title="Add Friend"
-                >
-                  <UserPlus className="w-4 h-4 text-zinc-400 group-hover:text-white" />
-                </button>
-              </div>
-            </>
-          )}
+    <div className="p-8 h-full overflow-y-auto custom-scrollbar relative">
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-amber-500/10 rounded-full blur-[120px] pointer-events-none" />
+
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 relative z-10">
+          <div>
+            <h1 className="text-2xl font-bold text-white mb-1">Friends</h1>
+            <p className="text-sm text-zinc-400">Share expenses and track balances together</p>
+          </div>
+
+          <div className="flex items-center gap-4 w-full md:w-auto min-h-[44px]">
+             {/* Search Bar */}
+             <div className="relative flex-1 md:w-64">
+               <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
+               <input 
+                 type="text" 
+                 placeholder="Search friends..." 
+                 value={search}
+                 onChange={(e) => setSearch(e.target.value)}
+                 onFocus={() => setIsSearchOpen(true)}
+                 onBlur={() => setTimeout(() => setIsSearchOpen(false), 200)}
+                 className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-8 py-2 text-[13px] text-white placeholder:text-zinc-500 focus:outline-none focus:border-amber-500/50 transition-colors"
+               />
+               {search && (
+                 <button onClick={() => setSearch('')} className="absolute right-2 top-2 p-1 hover:bg-white/10 rounded-full transition-colors text-zinc-500 hover:text-white">
+                   <X className="w-4 h-4" />
+                 </button>
+               )}
+               {/* Recent Searches Dropdown */}
+               {isSearchOpen && search === '' && recentSearches.length > 0 && (
+                 <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                   <div className="px-3 py-2 text-[10px] font-bold text-zinc-500 uppercase tracking-widest bg-white/5">
+                     Recent Searches
+                   </div>
+                   {recentSearches.map((s, i) => (
+                     <div key={i} className="flex items-center justify-between px-3 py-2.5 hover:bg-white/5 group cursor-pointer border-t border-white/5" onClick={() => setSearch(s)}>
+                       <div className="flex items-center gap-2.5">
+                          <Clock className="w-3.5 h-3.5 text-zinc-500" />
+                          <span className="text-[13px] font-medium text-zinc-300 group-hover:text-white transition-colors">{s}</span>
+                       </div>
+                       <button onClick={(e) => removeSearch(e, s)} className="p-1 rounded-md text-zinc-600 hover:bg-white/10 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all">
+                         <X className="w-3.5 h-3.5" />
+                       </button>
+                     </div>
+                   ))}
+                 </div>
+               )}
+             </div>
+             
+             {/* Action Buttons */}
+             <div className="flex bg-white/5 border border-white/10 rounded-xl p-1">
+               <button onClick={() => setShowAddModal(true)} className="p-2 hover:bg-white/10 rounded-lg transition-colors group flex items-center gap-2" title="Add Friend">
+                 <UserPlus className="w-4 h-4 text-zinc-400 group-hover:text-white" />
+                 <span className="text-[12px] font-bold text-zinc-400 group-hover:text-white hidden sm:inline pr-2">Add</span>
+               </button>
+               <div className="w-px bg-white/10 my-1 mx-1" />
+               <button onClick={() => setShowInviteModal(true)} className="p-2 hover:bg-white/10 rounded-lg transition-colors group flex items-center gap-2" title="Share Invite Link">
+                 <Link className="w-4 h-4 text-zinc-400 group-hover:text-white" />
+                 <span className="text-[12px] font-bold text-zinc-400 group-hover:text-white hidden sm:inline pr-2">Invite</span>
+               </button>
+             </div>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 gap-1 flex flex-col custom-scrollbar">
-          {loading ? (
-             <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-zinc-500" /></div>
-          ) : (
-            <>
-              {pendingRequests.length > 0 && (
-                <div className="mb-4">
-                  <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest px-2 mb-2">Pending Requests</div>
-                  {pendingRequests.map((req, i) => (
-                    <div key={`req-${i}`} className="w-full text-left p-3 rounded-xl bg-white/5 border border-white/10 mb-2 flex flex-col gap-2">
-                       <div className="flex items-center gap-3">
-                         <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center text-xs shrink-0">
-                           {req.display_name.charAt(0).toUpperCase()}
+        {loading ? (
+          <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-zinc-500" /></div>
+        ) : (
+          <div className="flex flex-col gap-8 w-full relative z-10">
+            {/* PENDING REQUESTS */}
+            {pendingRequests.length > 0 && (
+               <div className="z-10 relative">
+                 <h3 className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-4">Pending Requests</h3>
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {pendingRequests.map((req, i) => (
+                      <div key={`req-${i}`} className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 flex flex-col gap-4">
+                         <div className="flex items-center gap-3">
+                           <div className="w-10 h-10 rounded-full bg-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center text-sm shrink-0 overflow-hidden">
+                             {req.avatar_url ? (
+                               <img src={`http://localhost:3000${req.avatar_url}`} alt={req.display_name} className="w-full h-full object-cover" />
+                             ) : (
+                               req.display_name.charAt(0).toUpperCase()
+                             )}
+                           </div>
+                           <div className="flex-1 min-w-0 flex flex-col">
+                             <span className="text-white text-[15px] font-medium truncate">{req.display_name}</span>
+                             <span className="text-zinc-500 text-[12px] truncate">{req.email || 'Phone hidden'}</span>
+                           </div>
                          </div>
-                         <div className="flex-1 min-w-0 flex flex-col">
-                           <span className="text-white text-[14px] font-medium truncate">{req.display_name}</span>
-                           <span className="text-zinc-500 text-[11px] truncate">{req.email || 'Phone hidden'}</span>
+                         <div className="flex gap-2">
+                           <button onClick={() => handleAcceptRequest(req.id)} className="flex-1 bg-amber-500 text-black text-[13px] font-bold py-2 rounded-xl hover:bg-amber-400 transition-colors">Accept</button>
+                           <button onClick={() => handleRejectRequest(req.id)} className="flex-1 bg-white/10 text-white text-[13px] font-bold py-2 rounded-xl hover:bg-white/20 transition-colors">Deny</button>
                          </div>
-                       </div>
-                       <div className="flex gap-2">
-                         <button onClick={() => handleAcceptRequest(req.id)} className="flex-1 bg-amber-500 text-black text-[12px] font-bold py-1.5 rounded-lg hover:bg-amber-400 transition-colors">Accept</button>
-                         <button onClick={() => handleRejectRequest(req.id)} className="flex-1 bg-white/10 text-white text-[12px] font-bold py-1.5 rounded-lg hover:bg-white/20 transition-colors">Deny</button>
-                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {filteredFriends.length === 0 && pendingRequests.length === 0 ? (
-                <div className="text-center py-8 text-zinc-500 text-[13px]">No friends found.</div>
-              ) : (
-                <>
-                  {filteredFriends.length > 0 && (
-                    <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest px-2 mb-2">Your Friends</div>
+                      </div>
+                    ))}
+                 </div>
+               </div>
+            )}
+
+
+
+            {/* INSIGHTS */}
+            {(insights?.mostGenerous || (insights?.streaks && insights.streaks.length > 0)) && (
+               <div className="z-10 relative">
+                 <h3 className="text-[12px] font-bold text-zinc-400 uppercase tracking-widest mb-4">Insights</h3>
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {insights?.mostGenerous && (
+                      <div className="p-6 rounded-3xl bg-gradient-to-br from-amber-500/10 via-white/[0.02] to-transparent border border-white/10 hover:border-amber-500/30 shadow-xl backdrop-blur-md group transition-all duration-300 hover:-translate-y-1">
+                        <div className="flex items-center gap-3 mb-5">
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-[0_0_15px_rgba(245,158,11,0.4)]">
+                            <Trophy className="w-5 h-5 text-black" />
+                          </div>
+                          <h4 className="text-[12px] text-amber-500 font-bold uppercase tracking-widest">Most Generous</h4>
+                        </div>
+                        <div className="text-xl text-white font-black group-hover:text-amber-400 transition-colors">{insights.mostGenerous.display_name}</div>
+                        <div className="text-[13px] text-zinc-400 mt-2 leading-relaxed font-medium">Paid <span className="text-white font-bold">₹{insights.mostGenerous.total_paid_for_you}</span> for you directly</div>
+                      </div>
+                    )}
+                    {insights?.streaks && insights.streaks.length > 0 && (
+                      <div className="p-6 rounded-3xl bg-gradient-to-br from-rose-500/10 via-white/[0.02] to-transparent border border-white/10 hover:border-rose-500/30 shadow-xl backdrop-blur-md group transition-all duration-300 hover:-translate-y-1">
+                        <div className="flex items-center gap-3 mb-5">
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-400 to-rose-600 flex items-center justify-center shadow-[0_0_15px_rgba(244,63,94,0.4)]">
+                            <Flame className="w-5 h-5 text-white" />
+                          </div>
+                          <h4 className="text-[12px] text-rose-500 font-bold uppercase tracking-widest">Top Streak</h4>
+                        </div>
+                        <div className="text-3xl text-white font-black flex items-center gap-2 group-hover:text-rose-400 transition-colors">
+                          {insights.streaks[0].spending_streak} <span className="text-sm font-bold text-zinc-500 uppercase tracking-widest">days</span>
+                        </div>
+                        <div className="text-[13px] font-medium text-zinc-400 mt-3">With <span className="font-bold text-white">{insights.streaks[0].display_name}</span></div>
+                      </div>
+                    )}
+                 </div>
+               </div>
+            )}
+
+            {/* FRIENDS GRID */}
+            <div className="z-10 relative">
+              
+              {filteredFriends.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center bg-white/[0.02] border border-white/5 rounded-[2rem] shadow-2xl backdrop-blur-sm">
+                  <div className="w-20 h-20 bg-gradient-to-br from-white/10 to-white/5 border border-white/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                    <UserPlus className="w-10 h-10 text-zinc-500" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-3">{search ? 'No results found' : 'No friends yet'}</h3>
+                  <p className="text-zinc-500 text-[15px] max-w-sm leading-relaxed">{search ? `No friends match "${search}"` : 'Add friends to start sharing expenses and tracking balances.'}</p>
+                  {!search && (
+                    <button 
+                      onClick={() => setShowAddModal(true)}
+                      className="mt-6 px-6 py-3 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl transition-colors shadow-lg shadow-amber-500/20"
+                    >
+                      Add Your First Friend
+                    </button>
                   )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {filteredFriends.map((f, i) => (
                     <button
                       key={i}
-                      onClick={() => navigate(`/friends/${f.id}`)}
-                      className="w-full text-left p-3 rounded-xl hover:bg-white/5 transition-colors flex items-center gap-3 group"
+                      onClick={() => {
+                        if (search.trim()) saveSearch(search);
+                        navigate(`/friends/${f.id}`);
+                      }}
+                      className="group text-left p-6 rounded-[2rem] bg-gradient-to-b from-white/[0.04] to-transparent border border-white/10 hover:border-amber-500/30 transition-all duration-300 shadow-xl backdrop-blur-md relative overflow-hidden flex flex-col hover:-translate-y-1"
                     >
-                      <div className="w-10 h-10 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
-                        <span className="text-indigo-400 font-bold text-sm">{f.display_name.charAt(0).toUpperCase()}</span>
-                      </div>
-                      <div className="flex-1 min-w-0 flex items-center justify-between">
-                        <h4 className="text-[14px] text-white font-medium truncate group-hover:text-amber-500 transition-colors">{f.display_name}</h4>
+                      {/* Glow effect on hover */}
+                      <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                      
+                      <div className="flex justify-between items-start mb-5 relative z-10 w-full">
+                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center border border-amber-500/30 group-hover:scale-105 transition-transform shadow-[0_0_15px_rgba(245,158,11,0.15)] overflow-hidden">
+                          {f.avatar_url ? (
+                            <img src={`http://localhost:3000${f.avatar_url}`} alt={f.display_name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-amber-400 font-black text-2xl">{f.display_name.charAt(0).toUpperCase()}</span>
+                          )}
+                        </div>
                         {f.spending_streak > 0 && (
-                          <div className="flex items-center shrink-0 ml-2">
-                             <span className="text-[12px] font-bold text-orange-400">{f.spending_streak}🔥</span>
+                          <div className="flex flex-col items-end">
+                             <span className="text-[11px] font-bold text-orange-400 bg-orange-500/10 px-2.5 py-1 rounded-full border border-orange-500/20 shadow-[0_0_10px_rgba(249,115,22,0.2)]">
+                               {f.spending_streak}🔥
+                             </span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="relative z-10 w-full mb-4">
+                        <h3 className="text-xl font-bold text-white mb-1 group-hover:text-amber-400 transition-colors truncate">{f.nickname || f.display_name}</h3>
+                        <div className="text-[13px] text-zinc-500 truncate">{f.email}</div>
+                      </div>
+                      
+                      <div className="mt-auto w-full pt-4 border-t border-white/10 relative z-10">
+                        {f.balance?.netBalance === 0 ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-zinc-500" />
+                            <span className="text-[13px] text-zinc-400 font-medium">Settled up</span>
+                          </div>
+                        ) : f.balance?.netBalance > 0 ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                            <span className="text-[14px] font-bold text-emerald-400">
+                              Owes you ₹{f.balance.netBalance}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]" />
+                            <span className="text-[14px] font-bold text-rose-400">
+                              You owe ₹{Math.abs(f.balance?.netBalance || 0)}
+                            </span>
                           </div>
                         )}
                       </div>
                     </button>
                   ))}
-                </>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* 2 & 3. DUAL-COLUMN CONTENT WRAPPER */}
-      <div className="flex-1 flex bg-black/40 relative">
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-50 overflow-hidden">
-           <div className="w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[100px]" />
-           <div className="w-[400px] h-[400px] bg-rose-500/10 rounded-full blur-[80px] -ml-40 mt-40" />
-        </div>
-
-        {/* CENTER COLUMN (Welcome / Recent Activity) */}
-        <div className="flex-1 border-r border-white/5 flex flex-col z-10 relative px-8 py-10">
-            {recentFriends.length > 0 ? (
-              <div className="w-full max-w-4xl flex flex-col items-start justify-start mb-8">
-                 <h2 className="text-2xl text-white font-bold mb-6">Recent Activity</h2>
-                 <div className="flex flex-wrap justify-start gap-5 w-full">
-                    {recentFriends.map((f) => {
-                      const fullFriend = friends.find(fr => fr.id === f.id);
-                      return (
-                         <button 
-                           key={f.id} 
-                           onClick={() => navigate(`/friends/${f.id}`)}
-                           className="flex flex-col items-center gap-4 w-[180px] p-6 rounded-3xl bg-gradient-to-b from-[#1c1c1e]/80 to-[#141416]/90 backdrop-blur-xl border border-white/10 hover:border-indigo-500/50 hover:shadow-[0_0_30px_rgba(99,102,241,0.15)] transition-all duration-300 transform hover:-translate-y-2 relative overflow-hidden group"
-                         >
-                           {/* Glow effect on hover */}
-                           <div className="absolute inset-0 bg-gradient-to-t from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                           
-                           <div className="relative">
-                             <div className="w-16 h-16 rounded-full bg-indigo-500/20 border-2 border-indigo-500/50 flex items-center justify-center mb-1 shadow-[0_0_15px_rgba(99,102,241,0.3)] z-10 relative group-hover:scale-105 transition-transform">
-                               <span className="text-indigo-300 font-black text-2xl tracking-tighter">{f.display_name.charAt(0).toUpperCase()}</span>
-                             </div>
-                           </div>
-                           <div className="w-full text-center z-10 relative">
-                             <span className="text-[16px] text-white font-bold truncate block mb-1">{f.nickname || f.display_name}</span>
-                             {fullFriend && (
-                               <div className="flex flex-col items-center mt-1">
-                                  {fullFriend.balance.netBalance === 0 ? (
-                                    <span className="text-[13px] bg-white/10 text-zinc-300 px-3 py-1 rounded-full font-bold tracking-wide">Settled</span>
-                                  ) : fullFriend.balance.netBalance > 0 ? (
-                                    <span className="text-[13px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full font-bold whitespace-nowrap shadow-[0_0_10px_rgba(16,185,129,0.1)]">
-                                      Owes ₹{fullFriend.balance.netBalance}
-                                    </span>
-                                  ) : (
-                                    <span className="text-[13px] bg-rose-500/10 text-rose-400 border border-rose-500/20 px-3 py-1 rounded-full font-bold whitespace-nowrap shadow-[0_0_10px_rgba(244,63,94,0.1)]">
-                                      Owe ₹{Math.abs(fullFriend.balance.netBalance)}
-                                    </span>
-                                  )}
-                               </div>
-                             )}
-                           </div>
-                         </button>
-                      );
-                    })}
-                  </div>
-               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center mb-8 h-full">
-                <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-6 shadow-2xl">
-                  <span className="text-2xl">👋</span>
                 </div>
-                <h1 className="text-2xl text-white font-bold mb-2">Friend Zone</h1>
-                <p className="text-zinc-400 text-sm max-w-sm text-center leading-relaxed">
-                  Select a friend from the sidebar to chat, view shared expenses, and dive into your mutual balances.
-                </p>
-              </div>
-            )}
-            
-            <button 
-              onClick={() => setShowExpenseModal(true)}
-              className="absolute bottom-8 right-8 px-5 py-3.5 bg-indigo-600 hover:bg-indigo-500 rounded-2xl text-white font-bold transition-all shadow-2xl shadow-indigo-600/30 border border-indigo-500/50 flex items-center gap-2 transform active:scale-95 z-50"
-            >
-              <Receipt className="w-5 h-5" /> Add Expense
-            </button>
-        </div>
-
-        {/* RIGHT COLUMN (Insights) */}
-        <div className="w-[320px] p-6 flex flex-col gap-6 z-10 overflow-y-auto custom-scrollbar">
-          <h3 className="text-white font-semibold text-[15px] sticky top-0 bg-transparent py-1 backdrop-blur-sm">Insights</h3>
-          
-          <div className="p-5 rounded-2xl bg-gradient-to-br from-amber-500/10 to-transparent border border-amber-500/20 shadow-lg">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
-                <Trophy className="w-4 h-4 text-amber-500" />
-              </div>
-              <h4 className="text-[13px] text-amber-500 font-semibold uppercase tracking-wider">Most Generous</h4>
+              )}
             </div>
-            {insights?.mostGenerous ? (
-               <div>
-                 <div className="text-lg text-white font-bold">{insights.mostGenerous.display_name}</div>
-                 <div className="text-[13px] text-zinc-400 mt-1.5 leading-relaxed tracking-wide whitespace-pre-wrap">Paid ₹ {insights.mostGenerous.total_paid_for_you} for you directly</div>
-               </div>
-            ) : (
-               <div className="text-[13px] text-zinc-500">No data yet.</div>
-            )}
           </div>
+        )}
+      {/* Floating Add Expense Button */}
+      <button 
+        onClick={() => setShowExpenseModal(true)}
+        className="fixed bottom-8 right-8 px-6 py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 rounded-full text-black font-black transition-all shadow-[0_10px_30px_rgba(245,158,11,0.3)] hover:shadow-[0_15px_40px_rgba(245,158,11,0.5)] border border-amber-300/50 flex items-center gap-3 transform hover:-translate-y-1 active:translate-y-0 active:scale-95 z-50 group"
+      >
+        <Receipt className="w-5 h-5 group-hover:rotate-12 transition-transform" /> 
+        <span className="tracking-wide">Add Expense</span>
+      </button>
 
-          <div className="p-5 rounded-2xl bg-gradient-to-br from-rose-500/10 to-transparent border border-rose-500/20 shadow-lg">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-rose-500/20 flex items-center justify-center">
-                <Flame className="w-4 h-4 text-rose-500" />
-              </div>
-              <h4 className="text-[13px] text-rose-500 font-semibold uppercase tracking-wider">Top Streak</h4>
-            </div>
-            {insights?.streaks && insights.streaks.length > 0 ? (
-               <div>
-                 <div className="text-2xl text-white font-bold flex items-center gap-2">
-                   {insights.streaks[0].spending_streak} <span className="text-sm font-medium text-zinc-400">days</span>
-                 </div>
-                 <div className="text-[13px] font-medium text-zinc-400 tracking-wide mt-2 whitespace-pre-wrap">With <span className="font-bold text-white/90">{insights.streaks[0].display_name}</span></div>
-               </div>
-            ) : (
-               <div className="text-[13px] text-zinc-500">No active streaks. Spend sequentially!</div>
-            )}
-          </div>
-
-        </div>
-      </div>
-
+      {/* MODALS */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-white/10 p-6 rounded-2xl shadow-2xl w-full max-w-md">
@@ -318,6 +347,7 @@ export const Friends = () => {
                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-[14px] text-white focus:outline-none focus:border-amber-500 transition-colors mb-6"
                  placeholder="Enter email or phone number"
                  required
+                 autoFocus
                />
                <div className="flex justify-end gap-3">
                  <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white transition-colors">Cancel</button>
@@ -337,6 +367,16 @@ export const Friends = () => {
             { id: currentUser.id, display_name: currentUser.displayName || 'You' },
             ...friends.map(f => ({ id: f.id, display_name: f.display_name }))
           ]}
+        />
+      )}
+
+      {currentUser && (
+        <InviteModal 
+          isOpen={showInviteModal}
+          onClose={() => setShowInviteModal(false)}
+          targetId={currentUser.id}
+          type="friend"
+          title="Friends"
         />
       )}
     </div>

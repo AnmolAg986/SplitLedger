@@ -1,7 +1,10 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../types/Request';
 import { FriendRepository } from '../../persistence/FriendRepository';
+import { ExpenseRepository } from '../../persistence/ExpenseRepository';
 import { UserRepository } from '../../persistence/UserRepository';
+import { DebtSimplificationService } from '../../../shared/services/DebtSimplificationService';
+import { DashboardRepository } from '../../persistence/DashboardRepository';
 
 export class FriendController {
 
@@ -177,6 +180,7 @@ export class FriendController {
     }
   }
 
+
   static async getRecentFriends(req: AuthenticatedRequest, res: Response) {
     try {
       const userId = req.user?.id;
@@ -209,9 +213,22 @@ export class FriendController {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-      const { friendId } = req.params;
-      // In a real app, this would send an SMS/Email/Push
-      // For now, we simulate success
+      const friendId = req.params.friendId as string;
+      const { amount } = req.body;
+      
+      const { ioInstance } = require('../../websocket/socketServer');
+      if (ioInstance) {
+        ioInstance.to(friendId).emit('notification', {
+          type: 'reminder',
+          message: amount > 0 
+            ? `Reminder to settle up: You owe ₹${amount} in total.`
+            : `Friendly nudge to check our shared expenses.`,
+          fromUserId: userId
+        });
+      }
+
+      await ExpenseRepository.recordFriendNudge(userId, friendId);
+
       return res.status(200).json({ message: 'Nudge sent successfully' });
     } catch (err) {
       console.error('[FriendController] nudgeFriend error:', err);

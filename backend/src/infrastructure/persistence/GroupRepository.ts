@@ -58,12 +58,12 @@ export class GroupRepository {
 
   static async getGroupDetail(groupId: string) {
     const groupRes = await pool.query(
-      `SELECT * FROM groups WHERE id = $1 AND deleted_at IS NULL`, [groupId]
+      `SELECT *, requires_approval FROM groups WHERE id = $1 AND deleted_at IS NULL`, [groupId]
     );
     if (groupRes.rows.length === 0) return null;
 
     const membersRes = await pool.query(
-      `SELECT u.id, u.display_name, u.email, u.avatar_url, gm.role, gm.joined_at
+      `SELECT u.id, u.display_name, u.email, u.avatar_url, gm.role, gm.joined_at, gm.status
        FROM group_members gm
        JOIN users u ON u.id = gm.user_id
        WHERE gm.group_id = $1
@@ -123,11 +123,12 @@ export class GroupRepository {
               CASE 
                 WHEN e.paid_by = $2 THEN
                   NOT EXISTS (SELECT 1 FROM expense_splits es2 WHERE es2.expense_id = e.id AND es2.user_id != $2 AND es2.is_paid = false)
-                ELSE 
+                WHEN EXISTS (SELECT 1 FROM expense_splits es4 WHERE es4.expense_id = e.id AND es4.user_id = $2 AND es4.amount > 0) THEN
                   EXISTS (SELECT 1 FROM expense_splits es3 WHERE es3.expense_id = e.id AND es3.user_id = $2 AND es3.is_paid = true)
-                  OR NOT EXISTS (SELECT 1 FROM expense_splits es4 WHERE es4.expense_id = e.id AND es4.user_id = $2)
+                ELSE 
+                  NOT EXISTS (SELECT 1 FROM expense_splits es_any WHERE es_any.expense_id = e.id AND es_any.user_id != e.paid_by AND es_any.is_paid = false)
               END as is_settled,
-              EXISTS (SELECT 1 FROM expense_splits es5 WHERE es5.expense_id = e.id AND es5.user_id = $2) as is_involved
+              (e.paid_by = $2 OR EXISTS (SELECT 1 FROM expense_splits es5 WHERE es5.expense_id = e.id AND es5.user_id = $2 AND es5.amount > 0)) as is_involved
        FROM expenses e
        JOIN users payer ON e.paid_by = payer.id
        WHERE e.group_id = $1 AND e.deleted_at IS NULL
@@ -190,12 +191,19 @@ export class GroupRepository {
     return res.rows[0]?.role || null;
   }
 
-  static async addMember(groupId: string, userId: string) {
+  static async addMember(groupId: string, userId: string, status: string = 'accepted') {
     await pool.query(
-      `INSERT INTO group_members (group_id, user_id, role)
-       VALUES ($1, $2, 'member')
-       ON CONFLICT DO NOTHING`,
-      [groupId, userId]
+      `INSERT INTO group_members (group_id, user_id, role, status)
+       VALUES ($1, $2, 'member', $3)
+       ON CONFLICT (group_id, user_id) DO UPDATE SET status = EXCLUDED.status`,
+      [groupId, userId, status]
+    );
+  }
+
+  static async updateMemberStatus(groupId: string, userId: string, status: string) {
+    await pool.query(
+      `UPDATE group_members SET status = $3 WHERE group_id = $1 AND user_id = $2`,
+      [groupId, userId, status]
     );
   }
 
@@ -227,12 +235,13 @@ export class GroupRepository {
     return res.rows[0] || null;
   }
 
-  static async updateGroupDetails(groupId: string, data: { name?: string; description?: string; avatarUrl?: string }) {
+  static async updateGroupDetails(groupId: string, data: { name?: string; description?: string; avatarUrl?: string; requiresApproval?: boolean }) {
     const fields = [];
     const values = [];
     if (data.name) { fields.push(`name = $${fields.length + 1}`); values.push(data.name); }
     if (data.description !== undefined) { fields.push(`description = $${fields.length + 1}`); values.push(data.description); }
     if (data.avatarUrl !== undefined) { fields.push(`avatar_url = $${fields.length + 1}`); values.push(data.avatarUrl); }
+    if (data.requiresApproval !== undefined) { fields.push(`requires_approval = $${fields.length + 1}`); values.push(data.requiresApproval); }
     
     if (fields.length === 0) return;
     values.push(groupId);

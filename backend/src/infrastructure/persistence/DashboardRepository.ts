@@ -172,6 +172,7 @@ export class DashboardRepository {
         SELECT
           u.id as user_id,
           u.display_name,
+          u.avatar_url,
           COALESCE(SUM(
             CASE
               WHEN e.paid_by = $1 AND es.user_id = u.id THEN es.amount
@@ -188,7 +189,7 @@ export class DashboardRepository {
           AND u.id != $1
           AND es.is_paid = false
           AND e.deleted_at IS NULL
-        GROUP BY u.id, u.display_name
+        GROUP BY u.id, u.display_name, u.avatar_url
         HAVING COALESCE(SUM(
           CASE
             WHEN e.paid_by = $1 AND es.user_id = u.id THEN es.amount
@@ -409,6 +410,7 @@ export class DashboardRepository {
           AND u.id != $1
           AND es.is_paid = false
           AND e.deleted_at IS NULL
+          AND (e.last_reminder_sent_at IS NULL OR e.last_reminder_sent_at < now() - interval '24 hours')
         GROUP BY u.id, u.display_name
         HAVING COALESCE(SUM(CASE WHEN e.paid_by = $1 THEN es.amount ELSE -es.amount END), 0) > 0
         ORDER BY amount DESC, days_ago DESC LIMIT 1

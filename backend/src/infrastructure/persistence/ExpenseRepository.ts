@@ -150,4 +150,19 @@ export class ExpenseRepository {
       [expenseId]
     );
   }
+
+  static async recordFriendNudge(userId: string, friendId: string) {
+    // Update last_reminder_sent_at for all expenses where userId paid and friendId owes
+    await pool.query(
+      `UPDATE expenses e
+       SET last_reminder_sent_at = now()
+       FROM expense_splits es
+       WHERE e.id = es.expense_id
+         AND e.paid_by = $1
+         AND es.user_id = $2
+         AND es.is_paid = false
+         AND e.deleted_at IS NULL`,
+      [userId, friendId]
+    );
+  }
 }

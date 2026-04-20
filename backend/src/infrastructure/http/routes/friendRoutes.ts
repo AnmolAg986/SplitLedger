@@ -11,6 +11,7 @@ router.get('/', requireAuth, FriendController.getFriends);
 router.get('/pending', requireAuth, FriendController.getPendingRequests);
 router.get('/search', requireAuth, FriendController.searchUsers);
 router.get('/insights', requireAuth, FriendController.getInsights);
+
 router.get('/recent', requireAuth, FriendController.getRecentFriends);
 router.post('/nickname', requireAuth, FriendController.setNickname);
 router.post('/:friendId/nudge', requireAuth, FriendController.nudgeFriend);

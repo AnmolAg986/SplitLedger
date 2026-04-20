@@ -91,6 +91,28 @@ export class UserRepository {
     await pool.query('UPDATE users SET login_count = login_count + 1 WHERE id = $1', [userId]);
   }
 
+  static async updateProfile(userId: string, displayName: string, avatarUrl: string | null): Promise<User | null> {
+    const res = await pool.query(
+      `UPDATE users SET display_name = $1, avatar_url = $2, updated_at = now() WHERE id = $3 RETURNING *`,
+      [displayName, avatarUrl, userId]
+    );
+    if (res.rows.length === 0) return null;
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      email: row.email,
+      phoneNumber: row.phone_number,
+      displayName: row.display_name,
+      avatarUrl: row.avatar_url,
+      defaultCurrency: row.default_currency,
+      upiId: row.upi_id,
+      isVerified: row.is_verified,
+      loginCount: row.login_count,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
   // --- OTP Verification Logic ---
 
   static async storeOTP(userId: string, code: string): Promise<void> {

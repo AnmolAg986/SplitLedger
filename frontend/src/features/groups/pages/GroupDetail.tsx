@@ -11,6 +11,7 @@ import { GroupCalendarTimeline } from '../components/GroupCalendarTimeline';
 import { InviteModal } from '../../../shared/components/InviteModal';
 import { getFirstName, getSplitSummary } from '../../../shared/utils/expenseUtils';
 import { ConfirmModal } from '../../../shared/components/ConfirmModal';
+import { useAuthStore } from '../../../app/store/useAuthStore';
 
 interface GroupExpense {
   id: string;
@@ -30,6 +31,8 @@ interface GroupBalance {
   owes_name: string;
   paid_by_name: string;
   amount: number;
+  paid_by: string;
+  owes_to: string;
 }
 
 interface LeaderboardEntry {
@@ -41,6 +44,7 @@ interface LeaderboardEntry {
 export const GroupDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const currentUser = useAuthStore(state => state.user);
   const [detail, setDetail] = useState<{ 
     id: string; 
     name: string; 
@@ -54,6 +58,7 @@ export const GroupDetail = () => {
   const [expenses, setExpenses] = useState<GroupExpense[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [balances, setBalances] = useState<GroupBalance[]>([]);
+  const [simplifications, setSimplifications] = useState<any[]>([]);
   const [isExpenseModalOpen, setExpenseModalOpen] = useState(false);
   const [expenseToEdit, setExpenseToEdit] = useState<GroupExpense | null>(null);
   const [loadingReminders, setLoadingReminders] = useState<Record<string, boolean>>({});
@@ -61,6 +66,7 @@ export const GroupDetail = () => {
   const [isInviteOpen, setInviteOpen] = useState(false);
   const [isTimelineVisible, setIsTimelineVisible] = useState(false);
   const [timelineFilterDate, setTimelineFilterDate] = useState<string | null>(null);
+  const [expenseTab, setExpenseTab] = useState<'unsettled' | 'settled'>('unsettled');
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -73,8 +79,14 @@ export const GroupDetail = () => {
     setConfirmConfig({ isOpen: true, title, message, onConfirm, type });
   };
 
-  const totalOwedToMe = balances.filter((b) => b.amount > 0).reduce((sum, b) => sum + parseFloat(String(b.amount)), 0);
-  const totalIOwe = Math.abs(balances.filter((b) => b.amount < 0).reduce((sum, b) => sum + parseFloat(String(b.amount)), 0));
+  const myBalance = balances.reduce((acc, b) => {
+    if (b.paid_by_name === currentUser?.displayName) return acc + parseFloat(String(b.amount));
+    if (b.owes_name === currentUser?.displayName) return acc - parseFloat(String(b.amount));
+    return acc;
+  }, 0);
+  
+  const totalOwedToMe = myBalance > 0 ? myBalance : 0;
+  const totalIOwe = myBalance < 0 ? Math.abs(myBalance) : 0;
 
   const refreshData = () => {
     if (!id) return;
@@ -82,12 +94,14 @@ export const GroupDetail = () => {
       apiClient.get(`/groups/${id}`),
       apiClient.get(`/groups/${id}/expenses`),
       apiClient.get(`/groups/${id}/leaderboard`),
-      apiClient.get(`/groups/${id}/balances`)
-    ]).then(([d, e, l, b]) => {
+      apiClient.get(`/groups/${id}/balances`),
+      apiClient.get(`/groups/${id}/simplifications`).catch(() => ({ data: [] }))
+    ]).then(([d, e, l, b, s]) => {
       setDetail(d.data);
       setExpenses(e.data);
       setLeaderboard(l.data);
       setBalances(b.data);
+      setSimplifications(s.data);
     }).catch(console.error);
   };
 
@@ -158,6 +172,15 @@ export const GroupDetail = () => {
     }
   };
 
+  const handleNudgeBalance = async (targetUserId: string, amount: number) => {
+    try {
+      await apiClient.post(`/groups/${id}/nudge/${targetUserId}`, { amount });
+      toast.success('Reminder sent!');
+    } catch (err) {
+      toast.error('Failed to send reminder');
+    }
+  };
+
   if (!detail) return <div className="p-8 text-white">Loading...</div>;
 
   return (
@@ -167,7 +190,7 @@ export const GroupDetail = () => {
       {/* HEADER */}
       <div className="p-6 border-b border-white/10 flex items-center justify-between z-10 sticky top-0 bg-black/50 backdrop-blur-xl">
          <div className="flex items-center gap-4">
-           <button onClick={() => navigate('/groups')} className="text-zinc-400 hover:text-white transition-colors">
+           <button onClick={() => navigate('/connections?tab=groups')} className="text-zinc-400 hover:text-white transition-colors">
              <ArrowLeft className="w-5 h-5" />
            </button>
             <div className="flex flex-col cursor-pointer" onClick={() => setInfoOpen(true)}>
@@ -228,14 +251,30 @@ export const GroupDetail = () => {
                 <div className="w-full animate-in fade-in duration-300">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">Group Expenses</h3>
-                    {timelineFilterDate && (
-                      <button 
-                        onClick={() => setTimelineFilterDate(null)}
-                        className="text-xs font-bold bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded-full transition-colors flex items-center gap-1.5"
-                      >
-                        Filtered: {new Date(timelineFilterDate).toLocaleDateString()} <Trash2 className="w-3 h-3 ml-1" />
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center p-1 bg-white/5 border border-white/10 rounded-lg">
+                        <button 
+                          onClick={() => setExpenseTab('unsettled')}
+                          className={`px-3 py-1.5 rounded-md text-[10px] uppercase tracking-widest font-bold transition-colors ${expenseTab === 'unsettled' ? 'bg-indigo-500 text-white shadow-lg' : 'text-zinc-500 hover:text-white'}`}
+                        >
+                          Unsettled
+                        </button>
+                        <button 
+                          onClick={() => setExpenseTab('settled')}
+                          className={`px-3 py-1.5 rounded-md text-[10px] uppercase tracking-widest font-bold transition-colors ${expenseTab === 'settled' ? 'bg-indigo-500 text-white shadow-lg' : 'text-zinc-500 hover:text-white'}`}
+                        >
+                          Settled
+                        </button>
+                      </div>
+                      {timelineFilterDate && (
+                        <button 
+                          onClick={() => setTimelineFilterDate(null)}
+                          className="text-xs font-bold bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+                        >
+                          Filtered: {new Date(timelineFilterDate).toLocaleDateString()} <Trash2 className="w-3 h-3 ml-1" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="flex flex-col gap-3">
@@ -243,6 +282,7 @@ export const GroupDetail = () => {
                       <p className="text-zinc-500 text-sm">No expenses logged yet. Be the first!</p>
                     ) : (
                       expenses
+                       .filter(e => expenseTab === 'settled' ? e.is_settled : !e.is_settled)
                        .filter(e => {
                          if (!timelineFilterDate) return true;
                          const filterD = new Date(timelineFilterDate);
@@ -250,19 +290,12 @@ export const GroupDetail = () => {
                          return filterD.getDate() === ed.getDate() && filterD.getMonth() === ed.getMonth() && filterD.getFullYear() === ed.getFullYear();
                        })
                        .map((e: GroupExpense) => (
-                    <div key={e.id} className={`p-4 rounded-2xl border ${e.is_settled ? 'border-emerald-500/20' : 'border-white/5'} bg-white/[0.02] hover:bg-white/[0.04] transition-colors relative overflow-hidden group`}>
-                       <div className={`absolute left-0 top-0 bottom-0 w-1 transition-colors ${e.is_settled ? 'bg-emerald-500/50' : 'bg-indigo-500/0 group-hover:bg-indigo-500/50'}`} />
+                    <div key={e.id} className={`p-4 rounded-2xl border ${e.is_settled ? 'border-emerald-500/20' : 'border-rose-500/20'} bg-white/[0.02] hover:bg-white/[0.04] transition-colors relative overflow-hidden group`}>
+                       <div className={`absolute left-0 top-0 bottom-0 w-1 transition-colors ${e.is_settled ? 'bg-emerald-500/50' : 'bg-rose-500/50'}`} />
                        <div className="flex justify-between items-start mb-1">
-                         <div className="flex flex-col gap-1 pr-2">
-                           <h4 className="text-[14px] font-bold text-white truncate">{e.description}</h4>
-                           {e.is_involved && (
-                             <div className="flex items-center gap-1.5 mt-0.5">
-                               <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm ${e.is_settled ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-500'}`}>
-                                  {e.is_settled ? 'Settled Up' : 'Not Settled Up'}
-                               </span>
-                             </div>
-                           )}
-                         </div>
+                          <div className="flex flex-col gap-1 pr-2">
+                            <h4 className="text-[14px] font-bold text-white truncate">{e.description}</h4>
+                          </div>
                          <div className="flex items-center gap-1.5 shrink-0">
                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                              {!e.is_settled && e.is_involved && (
@@ -326,8 +359,12 @@ export const GroupDetail = () => {
                     <div key={l.id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
                       <div className="flex items-center gap-3">
                         <span className={`text-sm font-black w-4 ${idx === 0 ? 'text-emerald-500' : 'text-zinc-500'}`}>{idx + 1}</span>
-                        <div className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-xs font-bold text-white">
-                          {l.display_name.charAt(0)}
+                        <div className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-xs font-bold text-white overflow-hidden">
+                          {(l as any).avatar_url ? (
+                            <img src={`http://localhost:3000${(l as any).avatar_url}`} alt={l.display_name} className="w-full h-full object-cover" />
+                          ) : (
+                            l.display_name.charAt(0).toUpperCase()
+                          )}
                         </div>
                         <span className="text-sm font-semibold text-white">{l.display_name}</span>
                       </div>
@@ -343,12 +380,70 @@ export const GroupDetail = () => {
               <p className="text-[11px] text-zinc-500 mb-4">Track who owes whom</p>
               <div className="flex flex-col gap-2">
                 {balances.map((b, i) => (
-                  <div key={i} className="text-[13px] p-3 rounded-lg border border-white/5 text-zinc-300 font-medium">
-                    <span className="text-white font-bold">{b.owes_name}</span> owes <span className="text-white font-bold">{b.paid_by_name}</span> <span className="text-emerald-400 font-bold">₹{b.amount}</span>
+                  <div key={i} className="text-[13px] p-3 rounded-lg border border-white/5 text-zinc-300 font-medium flex items-center justify-between group/bal hover:border-white/10 transition-colors">
+                    <div>
+                      {b.owes_to === currentUser?.id ? (
+                        <>
+                          <span className="text-rose-400 font-bold">You</span> owe <span className="text-white font-bold">{b.paid_by_name}</span> <span className="text-rose-400 font-bold">₹{b.amount}</span>
+                        </>
+                      ) : b.paid_by === currentUser?.id ? (
+                        <>
+                          <span className="text-white font-bold">{b.owes_name}</span> owes <span className="text-emerald-400 font-bold">You</span> <span className="text-emerald-400 font-bold">₹{b.amount}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-white font-bold">{b.owes_name}</span> owes <span className="text-white font-bold">{b.paid_by_name}</span> <span className="text-zinc-300 font-bold">₹{b.amount}</span>
+                        </>
+                      )}
+                    </div>
+                    {b.paid_by === currentUser?.id && (
+                      <button 
+                        onClick={() => handleNudgeBalance(b.owes_to, b.amount)}
+                        className="p-1.5 text-zinc-500 hover:text-indigo-400 hover:bg-indigo-500/10 rounded transition-all opacity-0 group-hover/bal:opacity-100"
+                        title="Send Reminder"
+                      >
+                        <Bell className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 ))}
+                {balances.length === 0 && (
+                   <p className="text-xs text-zinc-500">No pending balances.</p>
+                )}
               </div>
             </div>
+
+            {simplifications.length > 0 && simplifications.length < balances.length && (
+               <div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-1 flex items-center gap-2">
+                    Simplified Debts
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 mb-4">The easiest way to settle up</p>
+                  <div className="flex flex-col gap-2 relative">
+                    <div className="absolute left-4 top-4 bottom-4 w-px bg-indigo-500/20" />
+                    {simplifications.map((simp, i) => (
+                      <div key={i} className="text-[13px] p-3 rounded-lg border border-indigo-500/20 bg-indigo-500/5 text-zinc-300 font-medium flex items-center gap-3 relative z-10 backdrop-blur-sm">
+                        <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse shrink-0" />
+                        <div>
+                          {simp.from === currentUser?.id ? (
+                            <>
+                              <span className="text-rose-400 font-bold">You</span> should pay <span className="text-white font-bold">{simp.to_name}</span> <span className="text-rose-400 font-bold">₹{simp.amount}</span>
+                            </>
+                          ) : simp.to === currentUser?.id ? (
+                            <>
+                              <span className="text-white font-bold">{simp.from_name}</span> should pay <span className="text-emerald-400 font-bold">You</span> <span className="text-emerald-400 font-bold">₹{simp.amount}</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-white font-bold">{simp.from_name}</span> should pay <span className="text-white font-bold">{simp.to_name}</span> <span className="text-emerald-400 font-bold">₹{simp.amount}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+               </div>
+            )}
          </div>
       </div>
        
@@ -370,6 +465,10 @@ export const GroupDetail = () => {
         onClose={() => setInfoOpen(false)}
         detail={detail}
         onRefresh={refreshData}
+        onOpenInvite={() => {
+          setInfoOpen(false);
+          setInviteOpen(true);
+        }}
       />
 
       <InviteModal 

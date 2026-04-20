@@ -15,12 +15,33 @@ export class ChatController {
 
       const messages = await ChatRepository.getConversation(userId, friendId, limit, offset);
 
-      // Mark messages as read
+      // Mark messages as read and delivered
       await ChatRepository.markAsRead(userId, friendId);
 
       return res.status(200).json(messages);
     } catch (err) {
       console.error('[ChatController] getConversation error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async getGroupConversation(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const groupId = req.params.groupId as string;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const messages = await ChatRepository.getGroupConversation(groupId, userId, limit, offset);
+
+      // Mark messages as read for this user
+      await ChatRepository.markGroupMessageRead(groupId, userId);
+
+      return res.status(200).json(messages);
+    } catch (err) {
+      console.error('[ChatController] getGroupConversation error:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }

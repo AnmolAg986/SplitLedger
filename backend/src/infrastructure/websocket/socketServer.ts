@@ -68,6 +68,32 @@ export function initSocketServer(httpServer: HttpServer) {
       }
     });
 
+    socket.on('edit_message', async (data: { messageId: string; friendId: string; content: string }) => {
+      try {
+        const message = await ChatRepository.editMessage(data.messageId, userId, data.content.trim());
+        const roomId = [userId, data.friendId].sort().join('_');
+        io.to(roomId).emit('message_edited', message);
+      } catch (err) {
+        socket.emit('error', { message: 'Failed to edit message' });
+      }
+    });
+
+    socket.on('delete_message', async (data: { messageId: string; friendId: string; forEveryone: boolean }) => {
+      try {
+        if (data.forEveryone) {
+          const message = await ChatRepository.deleteForEveryone(data.messageId, userId);
+          const roomId = [userId, data.friendId].sort().join('_');
+          io.to(roomId).emit('message_deleted', message);
+        } else {
+          await ChatRepository.deleteForMe(data.messageId, userId);
+          // Just acknowledge to sender
+          socket.emit('message_deleted_for_me', { messageId: data.messageId });
+        }
+      } catch (err) {
+        socket.emit('error', { message: 'Failed to delete message' });
+      }
+    });
+
     // Typing indicator
     socket.on('typing', (friendId: string) => {
       const roomId = [userId, friendId].sort().join('_');
@@ -96,11 +122,73 @@ export function initSocketServer(httpServer: HttpServer) {
       socket.to(`group_${groupId}`).emit('group_user_stop_typing', { userId });
     });
 
-    // Mark messages as read
+    // Group Messaging
+    socket.on('send_group_message', async (data: { groupId: string; content: string }) => {
+      try {
+        const message = await ChatRepository.sendGroupMessage(data.groupId, userId, data.content.trim());
+        io.to(`group_${data.groupId}`).emit('new_group_message', { ...message, sender_name: (socket as any).displayName || 'User' });
+      } catch (err) {
+        socket.emit('error', { message: 'Failed to send group message' });
+      }
+    });
+
+    socket.on('edit_group_message', async (data: { messageId: string; groupId: string; content: string }) => {
+      try {
+        const message = await ChatRepository.editGroupMessage(data.messageId, userId, data.content.trim());
+        io.to(`group_${data.groupId}`).emit('group_message_edited', message);
+      } catch (err) {
+        socket.emit('error', { message: 'Failed to edit group message' });
+      }
+    });
+
+    socket.on('delete_group_message', async (data: { messageId: string; groupId: string; forEveryone: boolean }) => {
+      try {
+        if (data.forEveryone) {
+          const message = await ChatRepository.deleteGroupForEveryone(data.messageId, userId);
+          io.to(`group_${data.groupId}`).emit('group_message_deleted', message);
+        } else {
+          await ChatRepository.deleteGroupForMe(data.messageId, userId);
+          socket.emit('group_message_deleted_for_me', { messageId: data.messageId });
+        }
+      } catch (err) {
+        socket.emit('error', { message: 'Failed to delete group message' });
+      }
+    });
+
+    // Mark messages as read/delivered
     socket.on('mark_read', async (friendId: string) => {
       try {
         await ChatRepository.markAsRead(userId, friendId);
         io.to(friendId).emit('messages_read', { readBy: userId });
+      } catch {
+        // Non-critical
+      }
+    });
+
+    socket.on('mark_delivered', async () => {
+      try {
+        // Mark all messages sent to this user as delivered
+        await ChatRepository.markAsDelivered(userId);
+        // Broadcast to all users that this user is online and received their messages
+        socket.broadcast.emit('user_online_delivered', { userId });
+      } catch {
+        // Non-critical
+      }
+    });
+
+    socket.on('mark_group_read', async (groupId: string) => {
+      try {
+        await ChatRepository.markGroupMessageRead(groupId, userId);
+        io.to(`group_${groupId}`).emit('group_message_read', { groupId, readBy: userId });
+      } catch {
+        // Non-critical
+      }
+    });
+
+    socket.on('mark_group_delivered', async (groupId: string) => {
+      try {
+        await ChatRepository.markGroupMessageDelivered(groupId, userId);
+        io.to(`group_${groupId}`).emit('group_message_delivered', { groupId, deliveredTo: userId });
       } catch {
         // Non-critical
       }

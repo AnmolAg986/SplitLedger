@@ -97,8 +97,12 @@ export const SettleUpModal = ({ isOpen, onClose, onSuccess }: SettleUpModalProps
               {oweList.map((person) => (
                 <div key={person.user_id} className="p-4 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between group hover:border-emerald-500/30 transition-all">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-zinc-400 group-hover:bg-emerald-500/20 group-hover:text-emerald-400 transition-colors">
-                      {person.display_name.charAt(0)}
+                    <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-zinc-400 group-hover:bg-emerald-500/20 group-hover:text-emerald-400 transition-colors overflow-hidden">
+                      {(person as any).avatar_url ? (
+                        <img src={`http://localhost:3000${(person as any).avatar_url}`} alt={person.display_name} className="w-full h-full object-cover" />
+                      ) : (
+                        person.display_name.charAt(0)
+                      )}
                     </div>
                     <div>
                       <div className="text-white font-bold text-sm">{person.display_name}</div>

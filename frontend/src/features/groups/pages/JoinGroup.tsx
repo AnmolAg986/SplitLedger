@@ -54,7 +54,7 @@ export const JoinGroup = () => {
                 <h2 className="text-xl font-bold text-white mb-2">Oops!</h2>
                 <p className="text-zinc-500 text-sm mb-6">{message}</p>
                 <button 
-                  onClick={() => navigate('/groups')}
+                  onClick={() => navigate('/connections?tab=groups')}
                   className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm font-bold transition-all"
                 >
                   Back to Groups

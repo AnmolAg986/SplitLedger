@@ -5,6 +5,7 @@ import { requireAuth } from '../middleware/authMiddleware';
 const router = Router();
 
 router.get('/unread', requireAuth, ChatController.getUnreadCounts);
+router.get('/group/:groupId', requireAuth, ChatController.getGroupConversation);
 router.get('/:friendId', requireAuth, ChatController.getConversation);
 router.post('/:friendId', requireAuth, ChatController.sendMessage);
 router.patch('/:friendId/read', requireAuth, ChatController.markAsRead);

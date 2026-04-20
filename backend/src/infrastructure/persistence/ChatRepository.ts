@@ -18,8 +18,9 @@ export class ChatRepository {
        FROM direct_messages dm
        JOIN users s ON dm.sender_id = s.id
        JOIN users r ON dm.receiver_id = r.id
-       WHERE (dm.sender_id = $1 AND dm.receiver_id = $2)
-          OR (dm.sender_id = $2 AND dm.receiver_id = $1)
+       WHERE ((dm.sender_id = $1 AND dm.receiver_id = $2)
+          OR (dm.sender_id = $2 AND dm.receiver_id = $1))
+         AND NOT ($1 = ANY(dm.deleted_for_users))
        ORDER BY dm.created_at DESC
        LIMIT $3 OFFSET $4`,
       [userId1, userId2, limit, offset]
@@ -28,12 +29,54 @@ export class ChatRepository {
     return res.rows.reverse();
   }
 
+  static async editMessage(messageId: string, senderId: string, content: string) {
+    const res = await pool.query(
+      `UPDATE direct_messages 
+       SET content = $1, is_edited = true, updated_at = now() 
+       WHERE id = $2 AND sender_id = $3 AND created_at > now() - interval '30 minutes'
+       RETURNING *`,
+      [content, messageId, senderId]
+    );
+    if (!res.rows[0]) throw new Error('Cannot edit message after 30 minutes');
+    return res.rows[0];
+  }
+
+  static async deleteForMe(messageId: string, userId: string) {
+    await pool.query(
+      `UPDATE direct_messages
+       SET deleted_for_users = array_append(deleted_for_users, $1)
+       WHERE id = $2 AND NOT ($1 = ANY(deleted_for_users))`,
+      [userId, messageId]
+    );
+  }
+
+  static async deleteForEveryone(messageId: string, senderId: string) {
+    const res = await pool.query(
+      `UPDATE direct_messages
+       SET content = '', is_deleted_for_everyone = true, updated_at = now()
+       WHERE id = $1 AND sender_id = $2 AND created_at > now() - interval '30 minutes'
+       RETURNING *`,
+      [messageId, senderId]
+    );
+    if (!res.rows[0]) throw new Error('Cannot delete message for everyone after 30 minutes');
+    return res.rows[0];
+  }
+
   static async markAsRead(userId: string, friendId: string) {
     await pool.query(
       `UPDATE direct_messages
-       SET is_read = true
+       SET is_read = true, is_delivered = true
        WHERE receiver_id = $1 AND sender_id = $2 AND is_read = false`,
       [userId, friendId]
+    );
+  }
+
+  static async markAsDelivered(receiverId: string) {
+    await pool.query(
+      `UPDATE direct_messages
+       SET is_delivered = true
+       WHERE receiver_id = $1 AND is_delivered = false`,
+      [receiverId]
     );
   }
 
@@ -46,5 +89,81 @@ export class ChatRepository {
       [userId]
     );
     return res.rows;
+  }
+
+  // --- Group Messages ---
+  static async sendGroupMessage(groupId: string, senderId: string, content: string) {
+    const res = await pool.query(
+      `INSERT INTO group_messages (group_id, sender_id, content)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [groupId, senderId, content]
+    );
+    return res.rows[0];
+  }
+
+  static async getGroupConversation(groupId: string, userId: string, limit = 50, offset = 0) {
+    const res = await pool.query(
+      `SELECT gm.*, s.display_name as sender_name
+       FROM group_messages gm
+       JOIN users s ON gm.sender_id = s.id
+       WHERE gm.group_id = $1 AND NOT ($2 = ANY(gm.deleted_for_users))
+       ORDER BY gm.created_at DESC
+       LIMIT $3 OFFSET $4`,
+      [groupId, userId, limit, offset]
+    );
+    return res.rows.reverse();
+  }
+
+  static async editGroupMessage(messageId: string, senderId: string, content: string) {
+    const res = await pool.query(
+      `UPDATE group_messages 
+       SET content = $1, is_edited = true, updated_at = now() 
+       WHERE id = $2 AND sender_id = $3 AND created_at > now() - interval '30 minutes'
+       RETURNING *`,
+      [content, messageId, senderId]
+    );
+    if (!res.rows[0]) throw new Error('Cannot edit group message after 30 minutes');
+    return res.rows[0];
+  }
+
+  static async deleteGroupForMe(messageId: string, userId: string) {
+    await pool.query(
+      `UPDATE group_messages
+       SET deleted_for_users = array_append(deleted_for_users, $1)
+       WHERE id = $2 AND NOT ($1 = ANY(deleted_for_users))`,
+      [userId, messageId]
+    );
+  }
+
+  static async deleteGroupForEveryone(messageId: string, senderId: string) {
+    const res = await pool.query(
+      `UPDATE group_messages
+       SET content = '', is_deleted_for_everyone = true, updated_at = now()
+       WHERE id = $1 AND sender_id = $2 AND created_at > now() - interval '30 minutes'
+       RETURNING *`,
+      [messageId, senderId]
+    );
+    if (!res.rows[0]) throw new Error('Cannot delete group message for everyone after 30 minutes');
+    return res.rows[0];
+  }
+
+  static async markGroupMessageDelivered(groupId: string, userId: string) {
+    await pool.query(
+      `UPDATE group_messages
+       SET delivered_to = array_append(delivered_to, $1)
+       WHERE group_id = $2 AND NOT ($1 = ANY(delivered_to))`,
+      [userId, groupId]
+    );
+  }
+
+  static async markGroupMessageRead(groupId: string, userId: string) {
+    await pool.query(
+      `UPDATE group_messages
+       SET read_by = array_append(read_by, $1),
+           delivered_to = CASE WHEN NOT ($1 = ANY(delivered_to)) THEN array_append(delivered_to, $1) ELSE delivered_to END
+       WHERE group_id = $2 AND NOT ($1 = ANY(read_by))`,
+      [userId, groupId]
+    );
   }
 }

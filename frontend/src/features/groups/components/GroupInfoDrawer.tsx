@@ -1,6 +1,6 @@
 import { toast } from '../../../shared/store/useToastStore';
-import React, { useState, useEffect } from 'react';
-import { X, Crown, UserPlus, LogOut, Trash2, Search, Loader2, Edit2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Crown, UserPlus, LogOut, Trash2, Search, Loader2, Edit2, Camera } from 'lucide-react';
 import { apiClient } from '../../../shared/api/axios';
 import { useAuthStore } from '../../../app/store/useAuthStore';
 import { ConfirmModal } from '../../../shared/components/ConfirmModal';
@@ -10,9 +10,10 @@ interface GroupInfoDrawerProps {
   onClose: () => void;
   detail: any;
   onRefresh: () => void;
+  onOpenInvite: () => void;
 }
 
-export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClose, detail, onRefresh }) => {
+export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClose, detail, onRefresh, onOpenInvite }) => {
   const currentUser = useAuthStore(s => s.user);
   const currentUserId = currentUser?.id;
   const [showAddMember, setShowAddMember] = useState(false);
@@ -21,8 +22,16 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
   const [searching, setSearching] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ name: detail.name, description: detail.description || '' });
+  const [editForm, setEditForm] = useState({ 
+    name: detail.name, 
+    description: detail.description || '',
+    requires_approval: detail.requires_approval || false,
+    avatarUrl: detail.avatar_url || ''
+  });
   const [templates, setTemplates] = useState<any[]>([]);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -109,6 +118,32 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
     }
   };
 
+  const handleApproveMember = async (userId: string) => {
+    setActionLoading(userId);
+    try {
+      await apiClient.post(`/groups/${detail.id}/members/${userId}/approve`);
+      toast.success('Member approved');
+      onRefresh();
+    } catch (err: any) {
+      toast.error('Failed to approve member');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRejectMember = async (userId: string) => {
+    setActionLoading(userId);
+    try {
+      await apiClient.post(`/groups/${detail.id}/members/${userId}/reject`);
+      toast.success('Member rejected');
+      onRefresh();
+    } catch (err: any) {
+      toast.error('Failed to reject member');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleLeaveGroup = () => {
     showConfirm(
       'Leave Group',
@@ -132,12 +167,39 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
   const handleUpdateGroup = async () => {
     setActionLoading('update');
     try {
-      await apiClient.put(`/groups/${detail.id}`, editForm);
+      await apiClient.put(`/groups/${detail.id}`, {
+        name: editForm.name,
+        description: editForm.description,
+        requires_approval: editForm.requires_approval,
+        avatarUrl: editForm.avatarUrl
+      });
       toast.success('Group updated');
       setIsEditing(false);
       onRefresh();
     } catch (err: any) {
       toast.error('Failed to update group');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append('image', file);
+
+    setActionLoading('uploading');
+    try {
+      const res = await apiClient.post('/upload/image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const newUrl = res.data.url;
+      setEditForm(prev => ({ ...prev, avatarUrl: newUrl }));
+      
+      toast.success('Image uploaded successfully');
+    } catch (err) {
+      toast.error('Failed to update group picture');
     } finally {
       setActionLoading(null);
     }
@@ -211,12 +273,20 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
 
   useEffect(() => {
     if (isOpen && detail?.id) {
-      setEditForm({ name: detail.name, description: detail.description || '' });
+      setEditForm({ 
+        name: detail.name, 
+        description: detail.description || '',
+        requires_approval: detail.requires_approval || false,
+        avatarUrl: detail.avatar_url || ''
+      });
       fetchTemplates();
     }
-  }, [isOpen, detail?.id, detail?.name, detail?.description]);
+  }, [isOpen, detail?.id, detail?.name, detail?.description, detail?.requires_approval, detail?.avatar_url]);
 
   if (!isOpen || !detail) return null;
+
+  const activeMembers = detail.members?.filter((m: any) => m.status === 'accepted') || [];
+  const pendingMembers = detail.members?.filter((m: any) => m.status === 'pending') || [];
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm" onClick={onClose}>
@@ -244,8 +314,51 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
           <div className="p-6 border-b border-white/5">
             {isEditing ? (
               <div className="space-y-4">
-                <div className="w-16 h-16 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center mb-4 mx-auto">
-                   <span className="text-2xl font-black text-indigo-400">{editForm.name?.charAt(0)?.toUpperCase()}</span>
+                <div className="relative">
+                  <div 
+                    className="w-16 h-16 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center mb-4 mx-auto relative group cursor-pointer overflow-hidden"
+                    onClick={() => setShowAvatarMenu(!showAvatarMenu)}
+                  >
+                     {editForm.avatarUrl ? (
+                       <img src={`http://localhost:3000${editForm.avatarUrl}`} alt="Group" className="w-full h-full object-cover" />
+                     ) : (
+                       <span className="text-2xl font-black text-indigo-400">{editForm.name?.charAt(0)?.toUpperCase()}</span>
+                     )}
+                     <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                       {actionLoading === 'uploading' ? (
+                         <Loader2 className="w-5 h-5 text-white animate-spin" />
+                       ) : (
+                         <Camera className="w-5 h-5 text-white" />
+                       )}
+                     </div>
+                  </div>
+                  
+                  {showAvatarMenu && (
+                    <div className="absolute top-[70px] left-1/2 -translate-x-1/2 w-48 bg-zinc-800 border border-white/10 rounded-xl shadow-xl overflow-hidden z-20 animate-in fade-in zoom-in-95 duration-200">
+                      <button 
+                        onClick={() => { setShowAvatarMenu(false); galleryInputRef.current?.click(); }}
+                        className="w-full text-left px-4 py-3 text-xs font-medium text-white hover:bg-white/5 transition-colors border-b border-white/5"
+                      >
+                        Choose from gallery
+                      </button>
+                      <button 
+                        onClick={() => { setShowAvatarMenu(false); cameraInputRef.current?.click(); }}
+                        className="w-full text-left px-4 py-3 text-xs font-medium text-white hover:bg-white/5 transition-colors border-b border-white/5"
+                      >
+                        Click a picture
+                      </button>
+                      <button 
+                        onClick={() => { setShowAvatarMenu(false); setEditForm(prev => ({ ...prev, avatarUrl: '' })); }}
+                        className="w-full text-left px-4 py-3 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
+                      >
+                        Remove picture
+                      </button>
+                    </div>
+                  )}
+                  
+                  {/* Hidden inputs */}
+                  <input type="file" ref={galleryInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
+                  <input type="file" ref={cameraInputRef} className="hidden" accept="image/*" capture="environment" onChange={handleImageUpload} />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Name</label>
@@ -266,6 +379,19 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
                     placeholder="Short purpose of this group..."
                   />
                 </div>
+                <div className="flex items-center gap-3 bg-black/50 border border-white/10 rounded-lg px-3 py-3">
+                  <input 
+                    type="checkbox"
+                    id="requires_approval"
+                    checked={editForm.requires_approval}
+                    onChange={e => setEditForm({...editForm, requires_approval: e.target.checked})}
+                    className="w-4 h-4 rounded bg-black/50 border-white/10 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-black"
+                  />
+                  <div className="flex flex-col">
+                    <label htmlFor="requires_approval" className="text-sm font-medium text-white cursor-pointer">Require Join Approval</label>
+                    <span className="text-[10px] text-zinc-500">Admins must approve new members joining via link.</span>
+                  </div>
+                </div>
                 <div className="flex gap-2">
                    <button 
                     onClick={() => setIsEditing(false)}
@@ -284,14 +410,23 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
               </div>
             ) : (
               <>
-                <div className="w-16 h-16 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center mb-4 mx-auto relative group/avatar">
-                  <span className="text-2xl font-black text-indigo-400">{detail.name?.charAt(0)?.toUpperCase()}</span>
+                <div 
+                  className={`w-16 h-16 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center mb-4 mx-auto relative group/avatar overflow-hidden ${detail.avatar_url ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                  onClick={() => detail.avatar_url && window.open(`http://localhost:3000${detail.avatar_url}`, '_blank')}
+                >
+                  {detail.avatar_url ? (
+                     <img src={`http://localhost:3000${detail.avatar_url}`} alt="Group" className="w-full h-full object-cover" />
+                   ) : (
+                     <span className="text-2xl font-black text-indigo-400">{detail.name?.charAt(0)?.toUpperCase()}</span>
+                   )}
+
                   {detail.is_archived && (
                     <div className="absolute -top-1 -right-1 bg-amber-500 text-black p-1 rounded-full border-2 border-zinc-900" title="Archived">
                       <Trash2 className="w-2.5 h-2.5" />
                     </div>
                   )}
                 </div>
+                
                 <h2 className="text-xl font-bold text-white text-center mb-1">{detail.name}</h2>
                 <p className="text-xs text-zinc-500 text-center font-medium uppercase tracking-widest">{detail.type}</p>
                 {detail.description && (
@@ -308,15 +443,23 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
           <div className="p-5">
             <div className="flex items-center justify-between mb-4">
               <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
-                {detail.members?.length} Members
+                {activeMembers.length} Members
               </h4>
               {isAdmin && (
-                <button
-                  onClick={() => setShowAddMember(!showAddMember)}
-                  className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
-                >
-                  <UserPlus className="w-3.5 h-3.5" /> Add
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={onOpenInvite}
+                    className="flex items-center gap-1.5 text-[11px] font-bold text-amber-400 hover:text-amber-300 transition-colors"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" /> Invite Link
+                  </button>
+                  <button
+                    onClick={() => setShowAddMember(!showAddMember)}
+                    className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
+                  >
+                    <Search className="w-3.5 h-3.5" /> Add
+                  </button>
+                </div>
               )}
             </div>
 
@@ -342,8 +485,12 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
                     disabled={actionLoading === f.id}
                     className="w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-white/5 rounded-lg transition-colors"
                   >
-                    <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold text-white">
-                      {f.display_name?.charAt(0)?.toUpperCase()}
+                    <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold text-white overflow-hidden">
+                      {f.avatar_url ? (
+                        <img src={`http://localhost:3000${f.avatar_url}`} alt={f.display_name} className="w-full h-full object-cover" />
+                      ) : (
+                        f.display_name?.charAt(0)?.toUpperCase()
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-white truncate">{f.display_name}</p>
@@ -360,13 +507,17 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
 
             {/* Members List */}
             <div className="flex flex-col gap-1">
-              {detail.members?.map((m: any) => {
+              {activeMembers.map((m: any) => {
                 const isSelf = m.id === currentUserId;
                 const memberIsAdmin = m.role === 'admin';
                 return (
                   <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/[0.03] transition-colors group">
-                    <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white shrink-0">
-                      {m.display_name?.charAt(0)?.toUpperCase()}
+                    <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white shrink-0 overflow-hidden">
+                      {m.avatar_url ? (
+                        <img src={`http://localhost:3000${m.avatar_url}`} alt={m.display_name} className="w-full h-full object-cover" />
+                      ) : (
+                        m.display_name?.charAt(0)?.toUpperCase()
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -406,6 +557,50 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
                 );
               })}
             </div>
+
+            {/* Pending Members */}
+            {isAdmin && pendingMembers.length > 0 && (
+              <div className="mt-6 border-t border-white/5 pt-4">
+                <h4 className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-3">
+                  Pending Approvals ({pendingMembers.length})
+                </h4>
+                <div className="flex flex-col gap-1">
+                  {pendingMembers.map((m: any) => (
+                    <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl bg-amber-500/5 border border-amber-500/10">
+                      <div className="w-9 h-9 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-xs font-bold shrink-0 overflow-hidden">
+                        {m.avatar_url ? (
+                          <img src={`http://localhost:3000${m.avatar_url}`} alt={m.display_name} className="w-full h-full object-cover" />
+                        ) : (
+                          m.display_name?.charAt(0)?.toUpperCase()
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-semibold text-white truncate block">
+                          {m.display_name}
+                        </span>
+                        <p className="text-[10px] text-zinc-500 font-medium">Requested to join</p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleRejectMember(m.id)}
+                          disabled={actionLoading === m.id}
+                          className="p-1.5 text-rose-400 hover:bg-rose-500/20 rounded transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleApproveMember(m.id)}
+                          disabled={actionLoading === m.id}
+                          className="px-3 py-1.5 text-[11px] font-bold bg-amber-500 text-black hover:bg-amber-400 rounded-lg transition-colors flex items-center justify-center"
+                        >
+                          {actionLoading === m.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Approve'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Recurring Expenses */}

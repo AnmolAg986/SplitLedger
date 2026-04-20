@@ -39,6 +39,9 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   const [frequency, setFrequency] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly');
   const [memberFilterSearch, setMemberFilterSearch] = useState('');
   const [isMemberSearchOpen, setIsMemberSearchOpen] = useState(false);
+  const [splitType, setSplitType] = useState<'equal' | 'exact' | 'percentage'>('equal');
+  const [customSplits, setCustomSplits] = useState<Record<string, string>>({});
+  const [error, setError] = useState('');
 
   // Initialize paidBy and involvedIds when modal opens or members change
   useEffect(() => {
@@ -115,20 +118,56 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
     setInvolvedIds(groupMembers.map(m => getMemberId(m)));
   };
 
+  const computeSplits = () => {
+    const totalAmount = Number(amount) || 0;
+    if (splitType === 'equal') {
+      const splitAmount = parseFloat((totalAmount / involvedIds.length).toFixed(2));
+      return involvedIds.map(userId => ({ userId, amount: splitAmount }));
+    }
+    if (splitType === 'exact') {
+      return involvedIds.map(userId => ({
+        userId,
+        amount: Number(customSplits[userId] || 0)
+      }));
+    }
+    if (splitType === 'percentage') {
+      return involvedIds.map(userId => {
+        const pct = Number(customSplits[userId] || 0);
+        return {
+          userId,
+          amount: parseFloat(((totalAmount * pct) / 100).toFixed(2))
+        };
+      });
+    }
+    return [];
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+    const splits = computeSplits();
+
+    const sum = splits.reduce((acc, split) => acc + split.amount, 0);
+    const totalAmount = Number(amount) || 0;
+
+    if (Math.abs(sum - totalAmount) > 0.05) {
+      if (splitType === 'percentage') {
+        const totalPct = involvedIds.reduce((acc, u) => acc + Number(customSplits[u] || 0), 0);
+        if (Math.abs(totalPct - 100) > 0.01) return setError(`Percentages must equal 100%. Total is ${totalPct}%`);
+      } else {
+         return setError(`Split total (${sum}) does not equal the expense amount (${totalAmount})`);
+      }
+    }
+
     setLoading(true);
     try {
-      const splitAmount = parseFloat(amount) / involvedIds.length;
-      const splits = involvedIds.map(uid => ({ userId: uid, amount: splitAmount }));
-
       const payload = {
         groupId,
         paidBy: paidBy || getMemberId(groupMembers[0]),
-        amount: parseFloat(amount),
+        amount: totalAmount,
         currency,
         description,
-        splitType: 'equal',
+        splitType,
         category,
         dueDate: dueDate || undefined,
         splits,
@@ -167,6 +206,8 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
         <h2 className="text-xl font-bold text-white mb-6 shrink-0">
           {expenseToEdit ? 'Edit Expense' : 'Add Expense'}
         </h2>
+
+        {error && <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm rounded-lg shrink-0">{error}</div>}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 overflow-y-auto custom-scrollbar flex-1 pr-1">
           <div>
@@ -282,7 +323,43 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                   );
                 })}
             </div>
-            {amount && involvedIds.length > 0 && (
+            
+            {involvedIds.length > 0 && (
+              <div className="flex flex-col gap-2 mt-4 border-t border-white/5 pt-3">
+                 <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Split Strategy</label>
+                 <div className="flex bg-black/50 border border-white/10 rounded-xl p-1 relative">
+                    <button type="button" className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all ${splitType === 'equal' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`} onClick={() => setSplitType('equal')}>Equally</button>
+                    <button type="button" className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all ${splitType === 'exact' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`} onClick={() => setSplitType('exact')}>Custom</button>
+                    <button type="button" className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all ${splitType === 'percentage' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`} onClick={() => setSplitType('percentage')}>Percentage</button>
+                 </div>
+              </div>
+            )}
+
+            {splitType !== 'equal' && involvedIds.length > 0 && (
+              <div className="flex flex-col gap-3 py-2 mt-2 shrink-0">
+                {involvedIds.map(uid => {
+                  const m = groupMembers.find(m => getMemberId(m) === uid);
+                  return (
+                    <div key={uid} className="flex items-center justify-between">
+                      <span className="text-sm text-zinc-300 font-medium">{getMemberName(m)}</span>
+                      <div className="relative w-32">
+                        {splitType === 'exact' && <span className="absolute left-1.5 top-2.5 text-zinc-500 text-[10px] font-bold">{currency}</span>}
+                        {splitType === 'percentage' && <span className="absolute right-3 top-2 text-zinc-500 text-sm">%</span>}
+                        <input 
+                          type="number" step="0.01" required
+                          value={customSplits[uid] || ''} onWheel={e => e.currentTarget.blur()}
+                          onChange={(e) => setCustomSplits({...customSplits, [uid]: e.target.value})}
+                          className={`w-full bg-black/30 border border-white/10 rounded-lg py-2 text-sm text-white focus:outline-none focus:border-indigo-500 text-right ${splitType === 'exact' ? 'pl-9 pr-3' : 'pr-7 pl-3'}`}
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {amount && involvedIds.length > 0 && splitType === 'equal' && (
               <p className="text-[11px] text-zinc-500 mt-2">
                 Each person pays <span className="text-white font-bold">{currency} {(parseFloat(amount) / involvedIds.length).toFixed(2)}</span>
               </p>

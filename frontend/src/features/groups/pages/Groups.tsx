@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../shared/api/axios';
-import { Users, Loader2, Plus, UsersRound, X, Search } from 'lucide-react';
+import { Users, Loader2, Plus, UsersRound, X, Search, Clock } from 'lucide-react';
 import type { Group, GroupMember } from '../types/group';
 import { toast } from '../../../shared/store/useToastStore';
 
@@ -17,6 +17,28 @@ export const Groups = () => {
   const [searching, setSearching] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const [isArchivedView, setIsArchivedView] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('groupsRecentSearches') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const saveSearch = (query: string) => {
+    if (!query.trim()) return;
+    const updated = [query.trim(), ...recentSearches.filter(s => s.toLowerCase() !== query.trim().toLowerCase())].slice(0, 5);
+    setRecentSearches(updated);
+    localStorage.setItem('groupsRecentSearches', JSON.stringify(updated));
+  };
+
+  const removeSearch = (e: React.MouseEvent, query: string) => {
+    e.stopPropagation();
+    const updated = recentSearches.filter(s => s !== query);
+    setRecentSearches(updated);
+    localStorage.setItem('groupsRecentSearches', JSON.stringify(updated));
+  };
 
   const fetchGroups = async () => {
     try {
@@ -140,6 +162,8 @@ export const Groups = () => {
               placeholder="Search groups..." 
               value={groupSearch}
               onChange={(e) => setGroupSearch(e.target.value)}
+              onFocus={() => setIsSearchFocused(true)}
+              onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
               className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-8 py-2 text-[13px] text-white placeholder:text-zinc-500 focus:outline-none focus:border-indigo-500/50 transition-colors"
             />
             {groupSearch && (
@@ -149,6 +173,26 @@ export const Groups = () => {
               >
                 <X className="w-4 h-4" />
               </button>
+            )}
+
+            {/* Recent Searches Dropdown */}
+            {isSearchFocused && groupSearch === '' && recentSearches.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="px-3 py-2 text-[10px] font-bold text-zinc-500 uppercase tracking-widest bg-white/5">
+                  Recent Searches
+                </div>
+                {recentSearches.map((s, i) => (
+                  <div key={i} className="flex items-center justify-between px-3 py-2.5 hover:bg-white/5 group cursor-pointer border-t border-white/5" onClick={() => setGroupSearch(s)}>
+                    <div className="flex items-center gap-2.5">
+                       <Clock className="w-3.5 h-3.5 text-zinc-500" />
+                       <span className="text-[13px] font-medium text-zinc-300 group-hover:text-white transition-colors">{s}</span>
+                    </div>
+                    <button onClick={(e) => removeSearch(e, s)} className="p-1 rounded-md text-zinc-600 hover:bg-white/10 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
           
@@ -172,27 +216,40 @@ export const Groups = () => {
           <p className="text-zinc-500 text-sm max-w-sm">Create a group to start tracking expenses for trips, apartments, or events.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 relative z-10">
           {(Array.isArray(groups) ? groups : [])
             .filter(g => Boolean(g.is_archived) === isArchivedView)
             .filter(g => g.name.toLowerCase().includes(groupSearch.toLowerCase()))
             .map((g) => (
             <button 
               key={g.id}
-              onClick={() => navigate(`/groups/${g.id}`)}
-              className="group text-left p-6 rounded-2xl bg-white/[0.02] border border-white/10 hover:bg-white/[0.04] hover:border-indigo-500/30 transition-all shadow-xl backdrop-blur-sm"
+              onClick={() => {
+                if (groupSearch.trim()) saveSearch(groupSearch);
+                navigate(`/groups/${g.id}`);
+              }}
+              className="group text-left p-6 rounded-[2rem] bg-gradient-to-b from-white/[0.04] to-transparent border border-white/10 hover:border-indigo-500/30 transition-all duration-300 shadow-xl backdrop-blur-md relative overflow-hidden flex flex-col hover:-translate-y-1"
             >
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-12 h-12 rounded-xl bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
-                  <Users className="w-6 h-6 text-indigo-400" />
+              {/* Glow effect on hover */}
+              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              
+              <div className="flex justify-between items-start mb-5 relative z-10 w-full">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-indigo-600/10 flex items-center justify-center border border-indigo-500/30 group-hover:scale-105 transition-transform shadow-[0_0_15px_rgba(99,102,241,0.15)] overflow-hidden">
+                  {g.avatar_url ? (
+                    <img src={`http://localhost:3000${g.avatar_url}`} alt={g.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <Users className="w-8 h-8 text-indigo-400" />
+                  )}
                 </div>
-                <span className="text-[11px] font-semibold tracking-widest uppercase text-zinc-500 bg-white/5 px-2 py-1 rounded border border-white/5">
+                <span className="text-[10px] font-bold tracking-widest uppercase text-indigo-300 bg-indigo-500/10 px-2.5 py-1 rounded-full border border-indigo-500/20">
                   {g.type}
                 </span>
               </div>
-              <h3 className="text-lg font-bold text-white mb-2 group-hover:text-indigo-300 transition-colors">{g.name}</h3>
-              <div className="flex items-center text-zinc-400 text-sm font-medium">
-                <UsersRound className="w-4 h-4 mr-2 text-zinc-500" /> {g.member_count} members
+              
+              <div className="relative z-10 w-full mb-4">
+                <h3 className="text-xl font-bold text-white mb-1 group-hover:text-indigo-400 transition-colors truncate">{g.name}</h3>
+                <div className="flex items-center text-zinc-400 text-[13px] font-medium mt-2">
+                  <UsersRound className="w-4 h-4 mr-1.5 text-zinc-500" /> {g.member_count} members
+                </div>
               </div>
             </button>
           ))}
@@ -310,8 +367,12 @@ export const Groups = () => {
                            onClick={() => addMember(f)}
                            className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
                          >
-                           <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white">
-                             {f.display_name?.charAt(0)?.toUpperCase()}
+                           <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white overflow-hidden">
+                             {f.avatar_url ? (
+                               <img src={`http://localhost:3000${f.avatar_url}`} alt={f.display_name} className="w-full h-full object-cover" />
+                             ) : (
+                               f.display_name?.charAt(0)?.toUpperCase()
+                             )}
                            </div>
                            <div>
                              <p className="text-sm font-medium text-white">{f.display_name}</p>

@@ -11,6 +11,7 @@ router.get('/:id/balances', requireAuth, GroupController.getGroupBalances);
 router.get('/:id/expenses', requireAuth, GroupController.getGroupExpenses);
 router.get('/:id/leaderboard', requireAuth, GroupController.getLeaderboard);
 router.get('/:id/stats', requireAuth, GroupController.getMemberStats);
+router.get('/:id/simplifications', requireAuth, GroupController.getGroupSimplifications);
 router.get('/:id/invite', requireAuth, GroupController.getInviteToken);
 router.post('/join', requireAuth, GroupController.joinGroupByToken);
 router.put('/:id', requireAuth, GroupController.updateGroup);
@@ -22,7 +23,11 @@ router.delete('/:id', requireAuth, GroupController.deleteGroup);
 router.post('/:id/members', requireAuth, GroupController.addGroupMember);
 router.delete('/:id/members/:userId', requireAuth, GroupController.removeGroupMember);
 router.put('/:id/members/:userId/role', requireAuth, GroupController.changeMemberRole);
+router.post('/:id/members/:userId/approve', requireAuth, GroupController.approveMember);
+router.post('/:id/members/:userId/reject', requireAuth, GroupController.rejectMember);
 
 router.post('/:id/settle-all', requireAuth, require('../controllers/SettlementController').SettlementController.settleAllGroupMutual);
+
+router.post('/:id/nudge/:userId', (req, res) => GroupController.nudgeMember(req as any, res));
 
 export default router;

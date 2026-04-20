@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, BellRing, Sparkles, Calendar, Zap, Users, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-
+import { toast } from '../../../shared/store/useToastStore';
 import { apiClient } from '../../../shared/api/axios';
 
 interface WidgetProps {
@@ -29,29 +29,42 @@ const WIDGET_COLORS = [
 
 export const DashboardWidgets: React.FC<{ data: any }> = ({ data }) => {
   const navigate = useNavigate();
+  const [dismissedCards, setDismissedCards] = React.useState<string[]>([]);
   
   const allWidgets: WidgetProps[] = useMemo(() => {
     const list: WidgetProps[] = [];
 
     // 1. TOP BALANCES (Necessary -> Priority 8)
-    if (data.topOwe?.length > 0) {
+    const allBalances = [
+      ...(data.topOwe || []).map((b: any) => ({ ...b, type: 'owe' })),
+      ...(data.topOwed || []).map((b: any) => ({ ...b, type: 'owed' }))
+    ].sort((a, b) => b.amount - a.amount);
+
+    if (allBalances.length > 0) {
       list.push({
         id: 'top-balances',
         title: 'Top Balances',
         icon: <Users className="w-4 h-4 text-emerald-400" />,
         content: (
-          <div className="space-y-3 mt-4 w-full">
-            {data.topOwe.slice(0, 4).map((p: any) => (
-              <div key={p.user_id} className="flex justify-between items-center bg-white/5 px-4 py-3 rounded-xl border border-white/5 hover:bg-white/10 transition-colors">
-                <span className="text-sm font-medium text-white/90 truncate mr-4">{p.display_name}</span>
-                <span className="text-sm font-bold text-white whitespace-nowrap">₹{p.amount}</span>
+          <div className="space-y-2 mt-4 w-full">
+            {allBalances.slice(0, 4).map((p: any, idx: number) => (
+              <div key={`${p.user_id}-${p.type}-${idx}`} className="flex justify-between items-center bg-white/5 px-4 py-2.5 rounded-xl border border-white/5 hover:bg-white/10 transition-colors">
+                <div className="flex flex-col">
+                  <span className="text-sm font-bold text-white/90 truncate">{p.display_name}</span>
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${p.type === 'owe' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {p.type === 'owe' ? 'You Owe' : 'Owes You'}
+                  </span>
+                </div>
+                <span className={`text-sm font-bold whitespace-nowrap ${p.type === 'owe' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                  ₹{p.amount}
+                </span>
               </div>
             ))}
           </div>
         ),
         priority: 8,
         colSpan: 2, // Always full width
-        onClick: () => navigate('/friends')
+        onClick: () => navigate('/connections?tab=friends')
       });
     }
 
@@ -114,9 +127,21 @@ export const DashboardWidgets: React.FC<{ data: any }> = ({ data }) => {
             <p className="text-[14px] text-white/90 leading-relaxed font-medium">
               <span className="font-bold text-white">{data.smartNudge.display_name}</span> hasn't settled ₹{data.smartNudge.amount} since {data.smartNudge.days_ago} days.
             </p>
-            <div className="mt-3 px-3 py-1.5 bg-cyan-500/20 text-cyan-400 rounded-lg text-xs font-bold w-fit border border-cyan-500/20">
+            <button 
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  await apiClient.post(`/friends/${data.smartNudge.user_id}/nudge`, { amount: data.smartNudge.amount });
+                  toast.success('Reminder sent!');
+                  setDismissedCards(prev => [...prev, 'smart-alert']);
+                } catch (err) {
+                  toast.error('Failed to send reminder');
+                }
+              }}
+              className="mt-3 px-3 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg text-xs font-bold w-fit border border-cyan-500/20 transition-colors"
+            >
               Send Alert →
-            </div>
+            </button>
           </div>
         ),
         priority: 0,
@@ -176,36 +201,58 @@ export const DashboardWidgets: React.FC<{ data: any }> = ({ data }) => {
       });
     }
 
-    // 7. FOCUS CARD (Priority 0)
+    // Deduplication Rule: Drop Focus Card if it points to the same group/friend as Upcoming Split
     if (data.focusInsight) {
-      list.push({
-        id: 'focus-card',
-        title: 'Focus Card',
-        icon: <Sparkles className="w-4 h-4 text-purple-400" />,
-        content: (
-          <div className="mt-2 text-[15px] text-white/90 leading-relaxed font-medium">
-             Today's focus: Settle Expenses {data.focusInsight.type === 'group' ? 'in' : 'with'} <span className="font-bold text-white">{data.focusInsight.name}</span>
-          </div>
-        ),
-        priority: 0,
-        colSpan: 1,
-        onClick: () => navigate(data.focusInsight.type === 'group' ? `/groups/${data.focusInsight.id}` : `/friends/${data.focusInsight.id}`)
-      });
+      const isDuplicate = data.upcomingDues?.some((due: any) => 
+        (data.focusInsight.type === 'group' && due.group_id === data.focusInsight.id) ||
+        (data.focusInsight.type === 'friend' && due.user_id === data.focusInsight.id)
+      );
+
+      if (!isDuplicate) {
+        list.push({
+          id: 'focus-card',
+          title: 'Focus Card',
+          icon: <Sparkles className="w-4 h-4 text-purple-400" />,
+          content: (
+            <div className="mt-2 text-[15px] text-white/90 leading-relaxed font-medium">
+               Today's focus: Settle Expenses {data.focusInsight.type === 'group' ? 'in' : 'with'} <span className="font-bold text-white">{data.focusInsight.name}</span>
+            </div>
+          ),
+          priority: 0,
+          colSpan: 1,
+          onClick: () => navigate(data.focusInsight.type === 'group' ? `/groups/${data.focusInsight.id}` : `/friends/${data.focusInsight.id}`)
+        });
+      }
     }
 
     return list;
   }, [data, navigate]);
 
   const displayedWidgets = useMemo(() => {
-    // Separate priorities vs shuffles
     const priorities = allWidgets.filter(w => w.priority > 0).sort((a, b) => b.priority - a.priority);
     const nonPriorities = allWidgets.filter(w => w.priority === 0);
     
-    // Shuffle nonPriorities predictably
-    const shuffledNonPriorities = nonPriorities.sort((a, b) => Math.random() - 0.5);
+    // 12-Hour Shuffle logic
+    const now = new Date();
+    const isPM = now.getHours() >= 12;
+    const currentSeed = `${now.toISOString().split('T')[0]}-${isPM ? 'PM' : 'AM'}`;
+    
+    const storedSeed = localStorage.getItem('daily_card_seed');
+    let picks = JSON.parse(localStorage.getItem('daily_card_picks') || '[]');
 
+    if (storedSeed !== currentSeed || picks.length === 0 || !nonPriorities.every(np => picks.includes(np.id) || !picks.includes(np.id))) {
+       // Need a reshuffle or initialization
+       const shuffledNonPriorities = nonPriorities.sort(() => Math.random() - 0.5);
+       picks = shuffledNonPriorities.map(w => w.id);
+       localStorage.setItem('daily_card_seed', currentSeed);
+       localStorage.setItem('daily_card_picks', JSON.stringify(picks));
+    }
+
+    // Reconstruct shuffled nonPriorities based on stored picks
+    const orderedNonPriorities = picks.map((id: string) => nonPriorities.find(w => w.id === id)).filter(Boolean) as WidgetProps[];
+    
     // Combine and limit exactly to maximum 5 insights
-    const combined = [...priorities, ...shuffledNonPriorities].slice(0, 5);
+    const combined = [...priorities, ...orderedNonPriorities].slice(0, 5);
 
     // Assign dynamic colors
     const colorPalette = [...WIDGET_COLORS];
@@ -219,8 +266,8 @@ export const DashboardWidgets: React.FC<{ data: any }> = ({ data }) => {
     return combined.map((w, i) => ({
       ...w,
       color: colorPalette[i % colorPalette.length]
-    }));
-  }, [allWidgets]);
+    })).filter(w => !dismissedCards.includes(w.id));
+  }, [allWidgets, dismissedCards]);
 
   const N = displayedWidgets.length;
   if (N === 0) return null;
