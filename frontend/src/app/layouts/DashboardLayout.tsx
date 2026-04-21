@@ -203,7 +203,6 @@ export const DashboardLayout = () => {
             <LogOut className="h-5 w-5" strokeWidth={2.5} />
           </button>
         </div>
-      </aside>
       {/* Global Modals & Slide-overs */}
       <CommandPalette />
       <NotificationCenter />
