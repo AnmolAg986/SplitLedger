@@ -9,6 +9,7 @@ import { GroupChat } from '../components/GroupChat';
 import { GroupInfoDrawer } from '../components/GroupInfoDrawer';
 import { GroupCalendarTimeline } from '../components/GroupCalendarTimeline';
 import { ExpenseComments } from '../../expenses/components/ExpenseComments';
+import { ExpenseAttachments } from '../../expenses/components/ExpenseAttachments';
 import { InviteModal } from '../../../shared/components/InviteModal';
 import { getFirstName, getSplitSummary } from '../../../shared/utils/expenseUtils';
 import { ConfirmModal } from '../../../shared/components/ConfirmModal';
@@ -346,6 +347,7 @@ export const GroupDetail = () => {
                          <span>{new Date(e.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
                        </div>
                        <ExpenseComments expenseId={e.id} />
+                       <ExpenseAttachments expenseId={e.id} />
                     </div>
                   ))
                 )}
