@@ -16,6 +16,7 @@ import settlementRoutes from './infrastructure/http/routes/settlementRoutes';
 import chatRoutes from './infrastructure/http/routes/chatRoutes';
 import uploadRoutes from './infrastructure/http/routes/uploadRoutes';
 import unreadRoutes from './infrastructure/http/routes/unreadRoutes';
+import notificationRoutes from './infrastructure/http/routes/notificationRoutes';
 import path from 'path';
 import { initSocketServer } from './infrastructure/websocket/socketServer';
 import { startReminderJob } from './infrastructure/cron/reminderJob';
@@ -60,6 +61,7 @@ app.use('/settlements', settlementRoutes);
 app.use('/chat', chatRoutes);
 app.use('/upload', uploadRoutes);
 app.use('/unread', unreadRoutes);
+app.use('/notifications', notificationRoutes);
 
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 

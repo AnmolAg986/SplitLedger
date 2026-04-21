@@ -4,6 +4,7 @@ import { SettlementRepository } from '../../persistence/SettlementRepository';
 import { FriendRepository } from '../../persistence/FriendRepository';
 import { UnreadRepository } from '../../persistence/UnreadRepository';
 import { ioInstance } from '../../websocket/socketServer';
+import { NotificationService as NotificationSys } from '../../../application/services/NotificationService';
 
 export class SettlementController {
 
@@ -27,6 +28,15 @@ export class SettlementController {
       await SettlementRepository.settleUpBetween(toUser, userId);
 
       try {
+        await NotificationSys.notify(
+          toUser,
+          'settled',
+          'Payment Recorded',
+          `A payment of ${amount} ${currency || 'INR'} was recorded towards you.`,
+          'settlement',
+          settlement.id
+        );
+
         await UnreadRepository.increment(toUser, groupId ? 'group' : 'friend', groupId || userId, 'payments');
         if (ioInstance) {
           ioInstance.to(toUser).emit('unread_update', {
@@ -38,7 +48,7 @@ export class SettlementController {
           });
         }
       } catch (e) {
-        console.error('Failed to update unread counts:', e);
+        console.error('Failed to update unread counts or notify:', e);
       }
 
       return res.status(201).json(settlement);
@@ -61,6 +71,15 @@ export class SettlementController {
       await SettlementRepository.settleUpBetween(friendId, userId);
 
       try {
+        await NotificationSys.notify(
+          friendId,
+          'settled',
+          'All Debts Settled',
+          `All mutual debts between you have been marked as settled.`,
+          'friend',
+          userId
+        );
+
         await UnreadRepository.increment(friendId, 'friend', userId, 'payments');
         if (ioInstance) {
           ioInstance.to(friendId).emit('unread_update', {
@@ -72,7 +91,7 @@ export class SettlementController {
           });
         }
       } catch (e) {
-        console.error('Failed to update unread counts:', e);
+        console.error('Failed to update unread counts or notify:', e);
       }
 
       return res.status(200).json({ message: 'All mutual debts settled successfully' });

@@ -92,3 +92,25 @@ export const sendVerificationEmail = async (to: string, code: string) => {
     throw error;
   }
 };
+
+export const sendEmail = async (to: string, subject: string, html: string) => {
+  if (!transporter) {
+    console.warn('[EmailService] ⚠️ Transporter not initialized. Dropping email to', to);
+    return;
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from: '"SplitLedger" <noreply@splitledger.dev>',
+      to,
+      subject,
+      html,
+    });
+    
+    if (!process.env.SMTP_HOST) {
+      console.log(`[EmailService] 👀 View Email securely: ${nodemailer.getTestMessageUrl(info)}`);
+    }
+  } catch (error) {
+    console.error('[EmailService] ❌ Error deploying email:', error);
+  }
+};

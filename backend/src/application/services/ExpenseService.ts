@@ -6,6 +6,8 @@ import { SplitStrategyFactory } from '../../shared/services/splits/SplitStrategy
 import { SplitInput } from '../../shared/services/splits/ISplitStrategy';
 import { AppError } from '../../shared/errors/AppError';
 
+import { NotificationService as NotificationSys } from './NotificationService';
+
 export interface CreateExpenseServiceInput {
   groupId?: string | null;
   paidBy: string;
@@ -47,12 +49,22 @@ export class ExpenseService {
     // 2. Persist to DB
     const expense = await ExpenseRepository.createExpense(repoInput);
 
-    // 3. Side effects (streaks, unread badges, sockets)
+    // 3. Side effects (streaks, sockets, notifications)
     for (const split of computedSplits) {
       if (split.userId !== input.createdBy) {
         try {
           await FriendRepository.updateStreak(input.createdBy, split.userId);
           
+          // Phase 5: Notification System integration
+          await NotificationSys.notify(
+            split.userId,
+            'expense_added',
+            'New Expense Added',
+            `You were added to an expense: ${input.description}`,
+            input.groupId ? 'group' : 'expense',
+            input.groupId || expense.id
+          );
+
           if (input.groupId) {
             await UnreadRepository.increment(split.userId, 'group', input.groupId, 'expenses');
           } else {

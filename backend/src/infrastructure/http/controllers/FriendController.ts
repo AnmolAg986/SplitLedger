@@ -57,6 +57,16 @@ export class FriendController {
       const result = await FriendRepository.acceptFriend(userId, friendId);
       if (!result) return res.status(404).json({ error: 'No pending request found' });
 
+      const NotificationSys = require('../../../application/services/NotificationService').NotificationService;
+      await NotificationSys.notify(
+        friendId,
+        'friend_request_accepted',
+        'Friend Request Accepted',
+        `Your friend request was accepted.`,
+        'friend',
+        userId
+      );
+
       return res.status(200).json({ message: 'Friend request accepted', friendship: result });
     } catch (err) {
       console.error('[FriendController] acceptFriend error:', err);
@@ -216,16 +226,17 @@ export class FriendController {
       const friendId = req.params.friendId as string;
       const { amount } = req.body;
       
-      const { ioInstance } = require('../../websocket/socketServer');
-      if (ioInstance) {
-        ioInstance.to(friendId).emit('notification', {
-          type: 'reminder',
-          message: amount > 0 
-            ? `Reminder to settle up: You owe ₹${amount} in total.`
-            : `Friendly nudge to check our shared expenses.`,
-          fromUserId: userId
-        });
-      }
+      const NotificationSys = require('../../../application/services/NotificationService').NotificationService;
+      await NotificationSys.notify(
+        friendId,
+        'nudge',
+        'Reminder to Settle Up',
+        amount && amount > 0 
+          ? `Friendly reminder: You owe ₹${amount} in total.`
+          : `Friendly nudge to check our shared expenses.`,
+        'friend',
+        userId
+      );
 
       await ExpenseRepository.recordFriendNudge(userId, friendId);
 

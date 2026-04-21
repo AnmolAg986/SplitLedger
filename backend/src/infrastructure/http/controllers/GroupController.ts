@@ -426,14 +426,15 @@ export class GroupController {
 
       const group = await GroupRepository.getGroupDetail(groupId);
       
-      const { ioInstance } = require('../../websocket/socketServer');
-      if (ioInstance) {
-        ioInstance.to(targetUserId).emit('notification', {
-          type: 'reminder',
-          message: `Reminder for ${group?.name || 'Group'}: You have a pending balance of ₹${amount}.`,
-          groupId
-        });
-      }
+      const NotificationSys = require('../../../application/services/NotificationService').NotificationService;
+      await NotificationSys.notify(
+        targetUserId,
+        'nudge',
+        'Reminder to Settle Up',
+        `Reminder for ${group?.name || 'Group'}: You have a pending balance of ₹${amount}.`,
+        'group',
+        groupId
+      );
 
       return res.status(200).json({ message: 'Nudge sent successfully' });
     } catch (err) {
