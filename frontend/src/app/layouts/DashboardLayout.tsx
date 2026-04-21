@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Activity, LayoutDashboard, Settings, PanelLeft, PanelLeftClose, LogOut, Users, Receipt, User, Clock } from 'lucide-react';
+import { Activity, LayoutDashboard, Settings, PanelLeft, PanelLeftClose, LogOut, Users, Receipt, User, Clock, Bell } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { CommandPalette } from '../../features/dashboard/components/CommandPalette';
 import { useSocket } from '../../shared/hooks/useSocket';
 import { toast } from '../../shared/store/useToastStore';
 import { useUnreadStore } from '../../shared/store/useUnreadStore';
+import { useNotificationStore } from '../../shared/store/useNotificationStore';
+import { NotificationCenter } from '../../shared/components/NotificationCenter';
 
 export const DashboardLayout = () => {
   const { user, logout } = useAuthStore();
@@ -20,10 +22,16 @@ export const DashboardLayout = () => {
 
   React.useEffect(() => {
     const unsub = on('notification', (data: any) => {
+      // Add to store if it's a structured notification payload
+      if (data.id) {
+        useNotificationStore.getState().addNotification(data);
+      }
+      
+      // Still show toast for immediate feedback
       if (data.type === 'reminder') {
-        toast.info(data.message);
+        toast.info(data.message || data.body);
       } else {
-        toast.success(data.message);
+        toast.success(data.message || data.body);
       }
     });
 
@@ -195,14 +203,29 @@ export const DashboardLayout = () => {
             <LogOut className="h-5 w-5" strokeWidth={2.5} />
           </button>
         </div>
-      </aside>
-
-      {/* Global Modals */}
+      {/* Global Modals & Slide-overs */}
       <CommandPalette />
+      <NotificationCenter />
 
       {/* Main Content Area */}
       <main className="flex-1 relative overflow-hidden flex flex-col">
         <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-cyan-500/5 rounded-full blur-[150px] pointer-events-none"></div>
+        
+        {/* Top Actions (Floating Topbar) */}
+        <div className="absolute top-4 right-6 z-30 flex items-center gap-3">
+          <button 
+            onClick={() => useNotificationStore.getState().setIsOpen(true)}
+            className="relative p-2.5 bg-zinc-900/50 hover:bg-zinc-800 border border-zinc-800/50 rounded-full text-zinc-400 hover:text-white transition-all backdrop-blur-md shadow-lg"
+          >
+            <Bell className="w-5 h-5" />
+            {useNotificationStore().unreadCount > 0 && (
+              <span className="absolute top-0 right-0 translate-x-1/4 -translate-y-1/4 bg-rose-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-[0_0_8px_rgba(244,63,94,0.4)]">
+                {useNotificationStore().unreadCount > 99 ? '99+' : useNotificationStore().unreadCount}
+              </span>
+            )}
+          </button>
+        </div>
+
         <div className="flex-1 overflow-y-auto w-full h-full relative z-10">
             <Outlet />
         </div>

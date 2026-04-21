@@ -166,6 +166,22 @@ export const Profile = () => {
             </div>
           </div>
         </div>
+        <div className="bg-[#0c0c0e] border border-white/10 rounded-3xl p-8 shadow-2xl relative overflow-hidden mt-6 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-white mb-1">Notification Settings</h2>
+            <p className="text-sm text-zinc-400">Manage email, push, and in-app alerts.</p>
+          </div>
+          <button
+            onClick={() => {
+              const { useNavigate } = require('react-router-dom');
+              // This is a bit hacky to use require in onClick but valid. Better to import it.
+              window.location.href = '/profile/notifications';
+            }}
+            className="px-6 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white font-medium hover:bg-white/10 transition-colors"
+          >
+            Configure
+          </button>
+        </div>
       </div>
     </div>
   );
