@@ -43,7 +43,14 @@ export class ExpenseService {
       category: input.category,
       dueDate: input.dueDate,
       createdBy: input.createdBy,
-      splits: computedSplits.map(s => ({ userId: s.userId, amount: s.amount }))
+      splits: computedSplits.map(s => {
+        const participant = input.participants.find(p => p.userId === s.userId);
+        return { 
+          userId: s.userId, 
+          amount: s.amount,
+          shares: participant?.value // pass down shares/weight
+        };
+      })
     };
 
     // 2. Persist to DB
@@ -99,7 +106,14 @@ export class ExpenseService {
       const strategy = SplitStrategyFactory.getStrategy(updates.splitType);
       try {
         const computedSplits = strategy.compute(updates.amount, updates.participants);
-        repoUpdates.splits = computedSplits.map(s => ({ userId: s.userId, amount: s.amount }));
+        repoUpdates.splits = computedSplits.map(s => {
+          const participant = updates.participants!.find(p => p.userId === s.userId);
+          return { 
+            userId: s.userId, 
+            amount: s.amount,
+            shares: participant?.value 
+          };
+        });
         delete repoUpdates.participants;
       } catch (err: any) {
         throw new AppError(400, 'INVALID_SPLIT', err.message);

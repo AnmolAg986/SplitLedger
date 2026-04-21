@@ -10,7 +10,7 @@ export interface CreateExpenseInput {
   category?: string;
   dueDate?: string;
   createdBy: string;
-  splits: { userId: string; amount: number }[];
+  splits: { userId: string; amount: number; shares?: number }[];
 }
 
 export class ExpenseRepository {
@@ -42,9 +42,9 @@ export class ExpenseRepository {
       // Insert splits
       for (const split of input.splits) {
         await client.query(
-          `INSERT INTO expense_splits (expense_id, user_id, amount, currency)
-           VALUES ($1, $2, $3, $4)`,
-          [expense.id, split.userId, split.amount, input.currency]
+          `INSERT INTO expense_splits (expense_id, user_id, amount, currency, shares)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [expense.id, split.userId, split.amount, input.currency, split.shares || 1]
         );
       }
 
@@ -127,9 +127,9 @@ export class ExpenseRepository {
         await client.query(`DELETE FROM expense_splits WHERE expense_id = $1`, [expenseId]);
         for (const split of updates.splits) {
           await client.query(
-            `INSERT INTO expense_splits (expense_id, user_id, amount, currency)
-             VALUES ($1, $2, $3, $4)`,
-            [expenseId, split.userId, split.amount, currency]
+            `INSERT INTO expense_splits (expense_id, user_id, amount, currency, shares)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [expenseId, split.userId, split.amount, currency, split.shares || 1]
           );
         }
       }

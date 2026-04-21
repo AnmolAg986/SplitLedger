@@ -15,7 +15,7 @@ export const CreateExpenseModal: React.FC<CreateExpenseModalProps> = ({ onClose,
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState<number | ''>('');
   const [currency, setCurrency] = useState('INR');
-  const [splitType, setSplitType] = useState<'equal' | 'exact' | 'percentage'>('equal');
+  const [splitType, setSplitType] = useState<'equal' | 'exact' | 'percentage' | 'shares'>('equal');
   const [selectedUsers, setSelectedUsers] = useState<string[]>([currentUserId]);
   
   // Custom split values map (userId -> amount/percentage)
@@ -51,6 +51,20 @@ export const CreateExpenseModal: React.FC<CreateExpenseModalProps> = ({ onClose,
         };
       });
     }
+
+    if (splitType === 'shares') {
+      const totalShares = selectedUsers.reduce((sum, u) => sum + Number(customSplits[u] || 1), 0);
+      return selectedUsers.map(userId => {
+        const shares = Number(customSplits[userId] || 1);
+        const amt = totalShares > 0 ? (totalAmount * shares) / totalShares : 0;
+        return {
+          userId,
+          amount: parseFloat(amt.toFixed(2)),
+          shares
+        };
+      });
+    }
+
     return [];
   };
 
@@ -257,6 +271,7 @@ export const CreateExpenseModal: React.FC<CreateExpenseModalProps> = ({ onClose,
                 <button type="button" className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all ${splitType === 'equal' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`} onClick={() => setSplitType('equal')}>Equally</button>
                 <button type="button" className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all ${splitType === 'exact' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`} onClick={() => setSplitType('exact')}>Custom</button>
                 <button type="button" className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all ${splitType === 'percentage' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`} onClick={() => setSplitType('percentage')}>Percentage</button>
+                <button type="button" className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all ${splitType === 'shares' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`} onClick={() => setSplitType('shares')}>Shares</button>
              </div>
           </div>
 
@@ -270,12 +285,13 @@ export const CreateExpenseModal: React.FC<CreateExpenseModalProps> = ({ onClose,
                     <div className="relative w-32">
                       {splitType === 'exact' && <span className="absolute left-1.5 top-2.5 text-zinc-500 text-[10px] font-bold">{currency}</span>}
                       {splitType === 'percentage' && <span className="absolute right-3 top-2 text-zinc-500 text-sm">%</span>}
+                      {splitType === 'shares' && <span className="absolute right-3 top-2 text-zinc-500 text-sm">shares</span>}
                       <input 
                         type="number" step="0.01" required
                         value={customSplits[uid] || ''} onWheel={e => e.currentTarget.blur()}
                         onChange={(e) => setCustomSplits({...customSplits, [uid]: e.target.value})}
-                        className={`w-full bg-black/30 border border-white/10 rounded-lg py-2 text-sm text-white focus:outline-none focus:border-indigo-500 text-right ${splitType === 'exact' ? 'pl-9 pr-3' : 'pr-7 pl-3'}`}
-                        placeholder="0"
+                        className={`w-full bg-black/30 border border-white/10 rounded-lg py-2 text-sm text-white focus:outline-none focus:border-indigo-500 text-right ${splitType === 'exact' ? 'pl-9 pr-3' : splitType === 'shares' ? 'pr-14 pl-3' : 'pr-7 pl-3'}`}
+                        placeholder={splitType === 'shares' ? '1' : '0'}
                       />
                     </div>
                   </div>

@@ -20,7 +20,9 @@ export class ExpenseController {
       // Support legacy splits format from frontend if participants is not provided
       const finalParticipants = participants || (splits ? splits.map((s: any) => ({
         userId: s.userId || s.user_id,
-        value: s.value !== undefined ? s.value : s.amount
+        value: splitType === 'shares' || splitType === 'weight' 
+                 ? (s.shares !== undefined ? s.shares : 1)
+                 : (s.value !== undefined ? s.value : s.amount)
       })) : []);
 
       if (finalParticipants.length === 0) {
@@ -86,7 +88,9 @@ export class ExpenseController {
       if (updates.splits && !updates.participants) {
          updates.participants = updates.splits.map((s: any) => ({
             userId: s.userId || s.user_id,
-            value: s.value !== undefined ? s.value : s.amount
+            value: updates.splitType === 'shares' || updates.splitType === 'weight'
+                     ? (s.shares !== undefined ? s.shares : 1)
+                     : (s.value !== undefined ? s.value : s.amount)
          }));
       }
 
@@ -136,6 +140,83 @@ export class ExpenseController {
       });
 
       return res.status(201).json({ message: 'Recurring template created' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async getComments(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const expenseId = req.params.id as string;
+      const { ExpenseCommentRepository } = await import('../../persistence/ExpenseCommentRepository');
+      const comments = await ExpenseCommentRepository.getComments(expenseId);
+      return res.status(200).json(comments);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async addComment(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) throw new AppError(401, 'UNAUTHORIZED', 'Unauthorized');
+
+      const expenseId = req.params.id as string;
+      const { content } = req.body;
+      
+      if (!content || !content.trim()) {
+        throw new AppError(400, 'BAD_REQUEST', 'Comment content is required');
+      }
+
+      const { ExpenseCommentRepository } = await import('../../persistence/ExpenseCommentRepository');
+      const comment = await ExpenseCommentRepository.addComment(expenseId, userId, content.trim());
+
+      // Real-time notification to participants
+      const participants = await ExpenseCommentRepository.getExpenseParticipants(expenseId);
+      const { ioInstance } = await import('../../websocket/socketServer');
+      const { NotificationService } = await import('../../../application/services/NotificationService');
+      
+      if (ioInstance) {
+        for (const p of participants) {
+           if (p && p !== userId) {
+             ioInstance.to(p).emit('expense_comment', {
+                expenseId,
+                comment
+             });
+
+             // Also send a formal notification
+             await NotificationService.notify(
+                p,
+                'chat_message', // using chat_message as a proxy for comment
+                'New Expense Comment',
+                `${comment.user_name} commented: ${content.substring(0, 50)}...`,
+                'expense',
+                expenseId
+             ).catch(() => {});
+           }
+        }
+      }
+
+      return res.status(201).json(comment);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async deleteComment(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) throw new AppError(401, 'UNAUTHORIZED', 'Unauthorized');
+
+      const commentId = req.params.commentId as string;
+      const { ExpenseCommentRepository } = await import('../../persistence/ExpenseCommentRepository');
+      
+      const success = await ExpenseCommentRepository.deleteComment(commentId, userId);
+      if (!success) {
+        throw new AppError(403, 'FORBIDDEN', 'Cannot delete this comment');
+      }
+
+      return res.status(200).json({ message: 'Comment deleted' });
     } catch (err) {
       next(err);
     }

@@ -3,7 +3,8 @@ export interface SplitInput {
   userId: string;
   /** For 'exact': the explicit amount this user owes.
    *  For 'percentage': the percentage (0–100) this user owes.
-   *  For 'equal': unused. */
+   *  For 'equal': unused.
+   *  For 'shares': the weight/shares (integer or float). */
   value?: number;
 }
 
