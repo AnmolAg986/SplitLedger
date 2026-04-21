@@ -8,6 +8,7 @@ import { ExpenseCharts } from '../components/ExpenseCharts';
 import { GroupChat } from '../components/GroupChat';
 import { GroupInfoDrawer } from '../components/GroupInfoDrawer';
 import { GroupCalendarTimeline } from '../components/GroupCalendarTimeline';
+import { ExpenseComments } from '../../expenses/components/ExpenseComments';
 import { InviteModal } from '../../../shared/components/InviteModal';
 import { getFirstName, getSplitSummary } from '../../../shared/utils/expenseUtils';
 import { ConfirmModal } from '../../../shared/components/ConfirmModal';
@@ -344,6 +345,7 @@ export const GroupDetail = () => {
                          <span>Paid by <span className="text-indigo-400/90 font-bold">{getFirstName(e.paid_by_name)}</span> <span className="mx-1 opacity-30">•</span>{getSplitSummary(e.participants, detail.members?.length || 0)}</span>
                          <span>{new Date(e.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
                        </div>
+                       <ExpenseComments expenseId={e.id} />
                     </div>
                   ))
                 )}

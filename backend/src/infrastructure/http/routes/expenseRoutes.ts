@@ -14,4 +14,8 @@ router.post('/:id/remind', requireAuth, ExpenseController.remindExpense);
 router.post('/recurring', requireAuth, ExpenseController.createRecurringTemplate);
 router.post('/:id/settle', requireAuth, require('../controllers/SettlementController').SettlementController.settleSpecificExpense);
 
+router.get('/:id/comments', requireAuth, ExpenseController.getComments);
+router.post('/:id/comments', requireAuth, ExpenseController.addComment);
+router.delete('/:id/comments/:commentId', requireAuth, ExpenseController.deleteComment);
+
 export default router;

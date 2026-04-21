@@ -2,6 +2,7 @@ import { toast } from '../../../shared/store/useToastStore';
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../shared/api/axios';
+import { ExpenseComments } from '../../expenses/components/ExpenseComments';
 import { useSocket } from '../../../shared/hooks/useSocket';
 import { useAuthStore } from '../../../app/store/useAuthStore';
 import { ArrowLeft, Send, Receipt, Banknote, Edit2, Trash2, Bell, Loader2, MessageSquare, X, Check, CheckCheck, MoreVertical } from 'lucide-react';
@@ -502,6 +503,7 @@ export const FriendDetail = () => {
                        </div>
                        <span>Paid by {e.paid_by_name || 'You'}</span>
                      </div>
+                     <ExpenseComments expenseId={e.id} />
                    </div>
                  ))
                )}
