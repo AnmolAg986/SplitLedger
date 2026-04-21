@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../../../shared/utils/api';
+import { apiClient as api } from '../../../shared/api/axios';
 import { ArrowLeft, Bell, Mail, Smartphone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from '../../../shared/store/useToastStore';
