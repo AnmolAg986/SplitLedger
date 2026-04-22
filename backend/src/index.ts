@@ -25,6 +25,7 @@ import { initSocketServer } from './infrastructure/websocket/socketServer';
 import { startReminderJob } from './infrastructure/cron/reminderJob';
 import { startRecurringExpenseJob } from './infrastructure/cron/RecurringExpenseJob';
 import { startBudgetAlertJob } from './infrastructure/cron/budgetAlertJob';
+import { RecurringSettlementJob } from './infrastructure/cron/recurringSettlementJob';
 import { globalLimiter } from './infrastructure/http/middleware/rateLimiter';
 import { requestIdMiddleware } from './infrastructure/http/middleware/requestId';
 import pinoHttp from 'pino-http';
@@ -99,6 +100,7 @@ const startServer = async () => {
     startReminderJob();
     startRecurringExpenseJob();
     startBudgetAlertJob();
+    RecurringSettlementJob.start();
   });
 };
 
