@@ -9,6 +9,7 @@ import { getExchangeRate } from '../../shared/services/CurrencyService';
 import { pool } from '../../config/db';
 
 import { NotificationService as NotificationSys } from './NotificationService';
+import { GroupActivityRepository } from '../../infrastructure/persistence/GroupActivityRepository';
 
 export interface CreateExpenseServiceInput {
   groupId?: string | null;
@@ -18,6 +19,7 @@ export interface CreateExpenseServiceInput {
   description: string;
   splitType: string;
   category?: string;
+  subcategory?: string;
   dueDate?: string;
   createdBy: string;
   participants: SplitInput[];
@@ -67,6 +69,7 @@ export class ExpenseService {
       description: input.description,
       splitType: input.splitType,
       category: input.category,
+      subcategory: input.subcategory,
       dueDate: input.dueDate,
       createdBy: input.createdBy,
       exchangeRate,
@@ -120,6 +123,17 @@ export class ExpenseService {
           // Swallow non-critical side-effect errors for now
         }
       }
+    }
+
+    // Log group activity (non-blocking)
+    if (input.groupId) {
+      GroupActivityRepository.log(input.groupId, input.createdBy, 'expense_added', {
+        expense_id: expense.id,
+        description: input.description,
+        amount: input.amount,
+        currency: input.currency,
+        subcategory: input.subcategory
+      });
     }
 
     return expense;

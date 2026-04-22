@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from '../types/Request';
 import { ExpenseService, CreateExpenseServiceInput } from '../../../application/services/ExpenseService';
 import { RecurringExpenseRepository } from '../../persistence/RecurringExpenseRepository';
 import { AppError } from '../../../shared/errors/AppError';
+import { GroupActivityRepository } from '../../persistence/GroupActivityRepository';
 
 export class ExpenseController {
 
@@ -11,7 +12,7 @@ export class ExpenseController {
       const userId = req.user?.id;
       if (!userId) throw new AppError(401, 'UNAUTHORIZED', 'Unauthorized');
 
-      const { groupId, paidBy, amount, currency, description, splitType, category, dueDate, participants, splits, tags } = req.body;
+      const { groupId, paidBy, amount, currency, description, splitType, category, subcategory, dueDate, participants, splits, tags } = req.body;
 
       if (!amount || !description) {
         throw new AppError(400, 'BAD_REQUEST', 'Amount and description are required');
@@ -37,6 +38,7 @@ export class ExpenseController {
         description,
         splitType: splitType || 'equal',
         category,
+        subcategory,
         dueDate,
         createdBy: userId,
         participants: finalParticipants,
@@ -70,7 +72,14 @@ export class ExpenseController {
       if (!userId) throw new AppError(401, 'UNAUTHORIZED', 'Unauthorized');
 
       const id = req.params.id as string;
+      const expense = await ExpenseService.getExpense(id);
       await ExpenseService.deleteExpense(id, userId);
+
+      if (expense?.group_id) {
+        GroupActivityRepository.log(expense.group_id, userId, 'expense_deleted', {
+          expense_id: id, description: expense.description
+        });
+      }
 
       return res.status(200).json({ message: 'Expense deleted' });
     } catch (err) {
@@ -96,6 +105,12 @@ export class ExpenseController {
       }
 
       const updated = await ExpenseService.updateExpense(id, userId, updates);
+
+      if (updated?.group_id) {
+        GroupActivityRepository.log(updated.group_id, userId, 'expense_edited', {
+          expense_id: id, description: updated.description, amount: updated.amount
+        });
+      }
 
       return res.status(200).json(updated);
     } catch (err) {

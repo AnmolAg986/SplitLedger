@@ -8,6 +8,7 @@ export interface CreateExpenseInput {
   description: string;
   splitType: string;
   category?: string;
+  subcategory?: string;
   dueDate?: string;
   createdBy: string;
   exchangeRate?: number;   // rate from expense currency to group base currency
@@ -27,8 +28,8 @@ export class ExpenseRepository {
       const baseAmount = input.baseAmount ?? input.amount;
 
       const expenseRes = await client.query(
-        `INSERT INTO expenses (group_id, paid_by, amount, currency, base_amount, exchange_rate, description, split_type, category, created_by, due_date)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `INSERT INTO expenses (group_id, paid_by, amount, currency, base_amount, exchange_rate, description, split_type, category, subcategory, created_by, due_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING *`,
         [
           input.groupId || null,
@@ -40,6 +41,7 @@ export class ExpenseRepository {
           input.description,
           input.splitType,
           input.category || null,
+          input.subcategory || null,
           input.createdBy,
           input.dueDate || null
         ]
