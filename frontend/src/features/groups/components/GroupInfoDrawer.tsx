@@ -1,6 +1,7 @@
 import { toast } from '../../../shared/store/useToastStore';
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Crown, UserPlus, LogOut, Trash2, Search, Loader2, Edit2, Camera } from 'lucide-react';
+import { X, Crown, UserPlus, LogOut, Trash2, Search, Loader2, Edit2, Camera, MessageSquare } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../shared/api/axios';
 import { useAuthStore } from '../../../app/store/useAuthStore';
 import { ConfirmModal } from '../../../shared/components/ConfirmModal';
@@ -11,9 +12,11 @@ interface GroupInfoDrawerProps {
   detail: any;
   onRefresh: () => void;
   onOpenInvite: () => void;
+  balances?: any[];
 }
 
-export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClose, detail, onRefresh, onOpenInvite }) => {
+export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClose, detail, onRefresh, balances = [], onOpenInvite }) => {
+  const navigate = useNavigate();
   const currentUser = useAuthStore(s => s.user);
   const currentUserId = currentUser?.id;
   const [showAddMember, setShowAddMember] = useState(false);
@@ -31,6 +34,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
     avatarUrl: detail.avatar_url || ''
   });
   const [templates, setTemplates] = useState<any[]>([]);
+  const [memberStats, setMemberStats] = useState<any[]>([]);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
@@ -271,6 +275,15 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
     }
   };
 
+  const fetchMemberStats = async () => {
+    try {
+      const res = await apiClient.get(`/groups/${detail.id}/stats`);
+      setMemberStats(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleDeleteTemplate = (templateId: string) => {
     showConfirm(
       'Cancel Recurring',
@@ -298,6 +311,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
         avatarUrl: detail.avatar_url || ''
       });
       fetchTemplates();
+      fetchMemberStats();
     }
   }, [isOpen, detail?.id, detail?.name, detail?.description, detail?.requires_approval, detail?.avatar_url]);
 
@@ -528,6 +542,16 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
               {activeMembers.map((m: any) => {
                 const isSelf = m.id === currentUserId;
                 const memberIsAdmin = m.role === 'admin';
+                const mStats = memberStats.find(s => s.id === m.id);
+                
+                let netBalance = 0;
+                if (!isSelf) {
+                  balances.forEach(b => {
+                    if (b.paid_by === currentUserId && b.owes_to === m.id) netBalance += parseFloat(b.amount);
+                    else if (b.owes_to === currentUserId && b.paid_by === m.id) netBalance -= parseFloat(b.amount);
+                  });
+                }
+
                 return (
                   <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/[0.03] transition-colors group">
                     <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white shrink-0 overflow-hidden">
@@ -548,14 +572,45 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-zinc-600 font-medium">
-                        Joined {new Date(m.joined_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </p>
+                      
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="text-[10px] text-zinc-500 font-medium">
+                          Joined {new Date(m.joined_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </p>
+                        {mStats && (
+                          <>
+                            <span className="text-[10px] text-zinc-600">•</span>
+                            <p className="text-[10px] text-emerald-400/80 font-medium">
+                              Paid ₹{mStats.total_paid || 0}
+                            </p>
+                          </>
+                        )}
+                      </div>
+
+                      {!isSelf && netBalance !== 0 && (
+                        <p className={`text-[10px] font-bold mt-0.5 ${netBalance > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {netBalance > 0 ? `${m.display_name.split(' ')[0]} owes you ₹${netBalance}` : `You owe ${m.display_name.split(' ')[0]} ₹${Math.abs(netBalance)}`}
+                        </p>
+                      )}
+                      {!isSelf && netBalance === 0 && (
+                        <p className="text-[10px] font-medium text-zinc-500 mt-0.5">Settled up</p>
+                      )}
                     </div>
-                    {/* Admin Actions */}
-                    {isAdmin && !isSelf && (
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                    
+                    {/* Actions */}
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                      {!isSelf && (
                         <button
+                          onClick={() => navigate(`/friends/${m.id}`)}
+                          className="p-1.5 text-indigo-400/60 hover:text-indigo-400 hover:bg-indigo-500/10 rounded transition-all"
+                          title="Direct Message"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {isAdmin && !isSelf && (
+                        <>
+                          <button
                           onClick={() => handleToggleRole(m.id, m.role)}
                           disabled={actionLoading === m.id}
                           className="p-1.5 text-indigo-400/60 hover:text-indigo-400 hover:bg-indigo-500/10 rounded transition-all"
@@ -568,13 +623,14 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
                           className="p-1.5 text-rose-400/60 hover:text-rose-400 hover:bg-rose-500/10 rounded transition-all"
                         >
                           {actionLoading === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
             {/* Pending Members */}
             {isAdmin && pendingMembers.length > 0 && (

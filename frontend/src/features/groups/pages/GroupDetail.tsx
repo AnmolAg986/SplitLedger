@@ -10,6 +10,8 @@ import { GroupInfoDrawer } from '../components/GroupInfoDrawer';
 import { GroupCalendarTimeline } from '../components/GroupCalendarTimeline';
 import { GroupAnalytics } from '../components/GroupAnalytics';
 import { GroupTemplates } from '../components/GroupTemplates';
+import { SubcategoryExpenseList } from '../components/SubcategoryExpenseList';
+import { GroupActivityFeed } from '../components/GroupActivityFeed';
 import { BulkImportModal } from '../components/BulkImportModal';
 import { ExpenseComments } from '../../expenses/components/ExpenseComments';
 import { ExpenseAttachments } from '../../expenses/components/ExpenseAttachments';
@@ -33,6 +35,8 @@ interface GroupExpense {
   participants: { id: string; display_name: string }[];
   tags?: string[];
   is_locked?: boolean;
+  category?: string;
+  subcategory?: string;
 }
 
 interface GroupBalance {
@@ -60,7 +64,7 @@ export const GroupDetail = () => {
     type: string; 
     is_archived?: boolean;
     description?: string;
-    members: { id: string; display_name: string }[]; 
+    members: { id: string; display_name: string; role?: string }[];
     default_due_day?: number;
     created_at: string;
   } | null>(null);
@@ -74,7 +78,7 @@ export const GroupDetail = () => {
   const [loadingReminders, setLoadingReminders] = useState<Record<string, boolean>>({});
   const [isInfoOpen, setInfoOpen] = useState(false);
   const [isInviteOpen, setInviteOpen] = useState(false);
-  const [activeView, setActiveView] = useState<'expenses' | 'timeline' | 'analytics'>('expenses');
+  const [activeView, setActiveView] = useState<'expenses' | 'timeline' | 'analytics' | 'activity'>('expenses');
   const [timelineFilterDate, setTimelineFilterDate] = useState<string | null>(null);
   const [expenseTab, setExpenseTab] = useState<'unsettled' | 'settled'>('unsettled');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -235,6 +239,17 @@ export const GroupDetail = () => {
            >
              <Calendar className="w-4 h-4" /> Timeline
            </button>
+           <button
+             onClick={() => setActiveView(activeView === 'activity' ? 'expenses' : 'activity')}
+             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 border ${
+               activeView === 'activity'
+                 ? 'bg-white/10 border-white/20 text-white'
+                 : 'bg-transparent border-white/10 text-zinc-400 hover:text-white hover:bg-white/5'
+             }`}
+           >
+             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+             Activity
+           </button>
            <button 
              onClick={() => setBulkImportOpen(true)}
              className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-zinc-300 font-medium transition-colors flex items-center gap-2"
@@ -276,6 +291,10 @@ export const GroupDetail = () => {
                      setActiveView('expenses');
                    }}
                 />
+              </div>
+            ) : activeView === 'activity' ? (
+              <div className="w-full animate-in fade-in duration-300">
+                <GroupActivityFeed groupId={detail.id} />
               </div>
             ) : (
               <>
@@ -331,26 +350,29 @@ export const GroupDetail = () => {
                     {expenses.length === 0 ? (
                       <p className="text-zinc-500 text-sm">No expenses logged yet. Be the first!</p>
                     ) : (
-                      expenses
-                       .filter(e => expenseTab === 'settled' ? e.is_settled : !e.is_settled)
-                       .filter(e => {
-                         if (!timelineFilterDate) return true;
-                         const filterD = new Date(timelineFilterDate);
-                         const ed = new Date(e.created_at);
-                         return filterD.getDate() === ed.getDate() && filterD.getMonth() === ed.getMonth() && filterD.getFullYear() === ed.getFullYear();
-                       })
-                       .filter(e => !selectedTag || (e.tags && e.tags.includes(selectedTag)))
-                       .map((e: GroupExpense) => (
-                    <div key={e.id} className={`p-4 rounded-2xl border ${e.is_settled ? 'border-emerald-500/20' : 'border-rose-500/20'} bg-white/[0.02] hover:bg-white/[0.04] transition-colors relative overflow-hidden group`}>
-                       <div className={`absolute left-0 top-0 bottom-0 w-1 transition-colors ${e.is_settled ? 'bg-emerald-500/50' : 'bg-rose-500/50'}`} />
-                        <div className="flex justify-between items-start mb-1">
-                          <div className="flex flex-col gap-1 pr-2">
-                            <h4 className="text-[14px] font-bold text-white truncate flex items-center gap-2">
-                              {e.description}
-                              {e.is_locked && <span title="Locked"><svg className="w-3 h-3 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg></span>}
-                            </h4>
-                          </div>
-                         <div className="flex items-center gap-1.5 shrink-0">
+                      <SubcategoryExpenseList
+                        expenses={
+                          expenses
+                            .filter(e => expenseTab === 'settled' ? e.is_settled : !e.is_settled)
+                            .filter(e => {
+                              if (!timelineFilterDate) return true;
+                              const filterD = new Date(timelineFilterDate);
+                              const ed = new Date(e.created_at);
+                              return filterD.getDate() === ed.getDate() && filterD.getMonth() === ed.getMonth() && filterD.getFullYear() === ed.getFullYear();
+                            })
+                            .filter(e => !selectedTag || (e.tags && e.tags.includes(selectedTag)))
+                        }
+                        renderExpense={(e: any) => (
+                          <div key={e.id} className={`p-4 rounded-2xl border ${e.is_settled ? 'border-emerald-500/20' : 'border-rose-500/20'} bg-white/[0.02] hover:bg-white/[0.04] transition-colors relative overflow-hidden group`}>
+                             <div className={`absolute left-0 top-0 bottom-0 w-1 transition-colors ${e.is_settled ? 'bg-emerald-500/50' : 'bg-rose-500/50'}`} />
+                              <div className="flex justify-between items-start mb-1">
+                                <div className="flex flex-col gap-1 pr-2">
+                                  <h4 className="text-[14px] font-bold text-white truncate flex items-center gap-2">
+                                    {e.description}
+                                    {e.is_locked && <span title="Locked"><svg className="w-3 h-3 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg></span>}
+                                  </h4>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                              {!e.is_settled && e.is_involved && (
                                 <button 
@@ -396,18 +418,19 @@ export const GroupDetail = () => {
                        </div>
                        {e.tags && e.tags.length > 0 && (
                          <div className="flex flex-wrap gap-1.5 mt-2">
-                           {e.tags.map((tag, idx) => (
+                           {e.tags.map((tag: string, idx: number) => (
                              <button key={idx} onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors border ${selectedTag === tag ? 'bg-indigo-500 border-indigo-400 text-white' : 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20'}`}
                              >#{tag}</button>
                            ))}
                          </div>
                        )}
-                       <ExpenseComments expenseId={e.id} />
-                       <ExpenseAttachments expenseId={e.id} />
-                    </div>
-                  ))
-                )}
+                        <ExpenseComments expenseId={e.id} />
+                        <ExpenseAttachments expenseId={e.id} />
+                     </div>
+                        )}
+                      />
+                    )}
                   </div>
                 </div>
               </>
@@ -543,13 +566,20 @@ export const GroupDetail = () => {
         defaultDueDay={detail.default_due_day}
       />
       
-      <GroupChat groupId={id!} members={detail.members || []} />
+      <GroupChat
+        groupId={id!}
+        members={detail.members || []}
+        canPin={['owner', 'admin'].includes(
+          detail.members?.find(m => m.id === currentUser?.id)?.role ?? 'member'
+        )}
+      />
 
       <GroupInfoDrawer
         isOpen={isInfoOpen}
         onClose={() => setInfoOpen(false)}
         detail={detail}
         onRefresh={refreshData}
+        balances={balances}
         onOpenInvite={() => {
           setInfoOpen(false);
           setInviteOpen(true);

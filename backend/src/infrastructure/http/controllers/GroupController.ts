@@ -4,6 +4,11 @@ import { GroupRepository } from '../../persistence/GroupRepository';
 import { RecurringExpenseRepository } from '../../persistence/RecurringExpenseRepository';
 import { UserRepository } from '../../persistence/UserRepository';
 import { DebtSimplificationService } from '../../../shared/services/DebtSimplificationService';
+import { PermissionService } from '../../../application/services/PermissionService';
+import { GroupActivityRepository } from '../../persistence/GroupActivityRepository';
+import { pool } from '../../../config/db';
+import { ioInstance } from '../../websocket/socketServer';
+import QRCode from 'qrcode';
 
 export class GroupController {
 
@@ -188,8 +193,8 @@ export class GroupController {
       const groupId = req.params.id as string;
       const { userId } = req.body;
 
-      const role = await GroupRepository.getGroupMemberRole(groupId, requesterId);
-      if (role !== 'admin') return res.status(403).json({ error: 'Admin permissions required' });
+      const canDo = await PermissionService.can(requesterId, groupId, 'remove_member');
+      if (!canDo) return res.status(403).json({ error: 'Admin or owner permissions required' });
 
       await GroupRepository.addMember(groupId, userId);
       return res.status(200).json({ message: 'Member added' });
@@ -207,12 +212,17 @@ export class GroupController {
       const groupId = req.params.id as string;
       const targetUserId = req.params.userId as string;
 
-      const role = await GroupRepository.getGroupMemberRole(groupId, requesterId);
-      if (role !== 'admin' && requesterId !== targetUserId) {
+      const canRemove = await PermissionService.can(requesterId, groupId, 'remove_member');
+      if (!canRemove && requesterId !== targetUserId) {
         return res.status(403).json({ error: 'Not authorized to remove this member' });
       }
 
       await GroupRepository.removeMember(groupId, targetUserId);
+
+      GroupActivityRepository.log(groupId, requesterId, 'member_left', {
+        removed_user_id: targetUserId
+      });
+
       return res.status(200).json({ message: 'Member removed' });
     } catch (err) {
       console.error('[GroupController] removeGroupMember error:', err);
@@ -229,8 +239,16 @@ export class GroupController {
       const targetUserId = req.params.userId as string;
       const { role: newRole } = req.body;
 
-      const role = await GroupRepository.getGroupMemberRole(groupId, requesterId);
-      if (role !== 'admin') return res.status(403).json({ error: 'Admin permissions required' });
+      const validRoles = ['owner', 'admin', 'member', 'viewer'];
+      if (!validRoles.includes(newRole)) {
+        return res.status(400).json({ error: `Invalid role. Must be one of: ${validRoles.join(', ')}` });
+      }
+
+      // Promoting to admin requires promote_admin permission (owner only)
+      // Changing to any other role requires remove_member permission (admin+)
+      const requiredAction = newRole === 'admin' ? 'promote_admin' : 'remove_member';
+      const canDo = await PermissionService.can(requesterId, groupId, requiredAction);
+      if (!canDo) return res.status(403).json({ error: 'Insufficient permissions to change this role' });
 
       await GroupRepository.changeMemberRole(groupId, targetUserId, newRole);
       return res.status(200).json({ message: 'Member role updated' });
@@ -271,6 +289,11 @@ export class GroupController {
 
       const status = group.requires_approval ? 'pending' : 'accepted';
       await GroupRepository.addMember(group.id, userId, status);
+
+      GroupActivityRepository.log(group.id, userId, 'member_joined', {
+        display_name: undefined, status
+      });
+
       return res.status(200).json({ 
         message: status === 'pending' ? 'Join request sent. Pending admin approval.' : 'Joined successfully', 
         groupId: group.id 
@@ -289,8 +312,7 @@ export class GroupController {
       const groupId = req.params.id as string;
       const { isArchived } = req.body;
 
-      const role = await GroupRepository.getGroupMemberRole(groupId, requesterId);
-      if (role !== 'admin') return res.status(403).json({ error: 'Admin permissions required' });
+      await PermissionService.assertCan(requesterId, groupId, 'archive_group');
 
       if (isArchived) {
         const balances = await GroupRepository.getGroupBalances(groupId);
@@ -302,7 +324,8 @@ export class GroupController {
 
       await GroupRepository.archiveGroup(groupId, isArchived);
       return res.status(200).json({ message: isArchived ? 'Group archived' : 'Group unarchived' });
-    } catch (err) {
+    } catch (err: any) {
+      if (err.status === 403) return res.status(403).json({ error: err.message });
       console.error('[GroupController] archiveGroup error:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
@@ -316,12 +339,12 @@ export class GroupController {
       const groupId = req.params.id as string;
       const { name, description, avatarUrl, requires_approval } = req.body;
 
-      const role = await GroupRepository.getGroupMemberRole(groupId, requesterId);
-      if (role !== 'admin') return res.status(403).json({ error: 'Admin permissions required' });
+      await PermissionService.assertCan(requesterId, groupId, 'update_group');
 
       await GroupRepository.updateGroupDetails(groupId, { name, description, avatarUrl, requiresApproval: requires_approval });
       return res.status(200).json({ message: 'Group updated' });
-    } catch (err) {
+    } catch (err: any) {
+      if (err.status === 403) return res.status(403).json({ error: err.message });
       console.error('[GroupController] updateGroup error:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
@@ -334,12 +357,12 @@ export class GroupController {
 
       const groupId = req.params.id as string;
 
-      const role = await GroupRepository.getGroupMemberRole(groupId, requesterId);
-      if (role !== 'admin') return res.status(403).json({ error: 'Admin permissions required' });
+      await PermissionService.assertCan(requesterId, groupId, 'delete_group');
 
       await GroupRepository.deleteGroup(groupId, requesterId);
       return res.status(200).json({ message: 'Group deleted' });
-    } catch (err) {
+    } catch (err: any) {
+      if (err.status === 403) return res.status(403).json({ error: err.message });
       console.error('[GroupController] deleteGroup error:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
@@ -385,8 +408,8 @@ export class GroupController {
       const groupId = req.params.id as string;
       const targetUserId = req.params.userId as string;
 
-      const role = await GroupRepository.getGroupMemberRole(groupId, requesterId);
-      if (role !== 'admin') return res.status(403).json({ error: 'Admin permissions required' });
+      const canDo = await PermissionService.can(requesterId, groupId, 'remove_member');
+      if (!canDo) return res.status(403).json({ error: 'Admin or owner permissions required' });
 
       await GroupRepository.updateMemberStatus(groupId, targetUserId, 'accepted');
       return res.status(200).json({ message: 'Member approved' });
@@ -404,8 +427,8 @@ export class GroupController {
       const groupId = req.params.id as string;
       const targetUserId = req.params.userId as string;
 
-      const role = await GroupRepository.getGroupMemberRole(groupId, requesterId);
-      if (role !== 'admin') return res.status(403).json({ error: 'Admin permissions required' });
+      const canDo = await PermissionService.can(requesterId, groupId, 'remove_member');
+      if (!canDo) return res.status(403).json({ error: 'Admin or owner permissions required' });
 
       await GroupRepository.removeMember(groupId, targetUserId);
       return res.status(200).json({ message: 'Member rejected' });
@@ -455,18 +478,192 @@ export class GroupController {
         return res.status(400).json({ error: 'beforeDate is required' });
       }
 
-      // Check if user is admin or owner
-      const role = await GroupRepository.getGroupMemberRole(groupId, userId);
-      if (role !== 'admin' && role !== 'owner') {
-        return res.status(403).json({ error: 'Only admins can lock expenses' });
-      }
+      await PermissionService.assertCan(userId, groupId, 'lock_expenses');
 
       const { ExpenseService } = await import('../../../application/services/ExpenseService');
       const count = await ExpenseService.lockGroupExpenses(groupId, new Date(beforeDate), userId);
 
       return res.status(200).json({ message: `${count} expenses locked successfully` });
-    } catch (err) {
+    } catch (err: any) {
+      if (err.status === 403) return res.status(403).json({ error: err.message });
       console.error('[GroupController] lockExpenses error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  /** Returns the current user\'s permissions for a group — consumed by the frontend. */
+  static async getMyPermissions(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const groupId = req.params.id as string;
+      const permissions = await PermissionService.getPermissions(userId, groupId);
+
+      if (!permissions) return res.status(403).json({ error: 'Not a member of this group' });
+      return res.status(200).json(permissions);
+    } catch (err) {
+      console.error('[GroupController] getMyPermissions error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  /** GET /groups/:id/activity?limit=20&cursor=<ISO timestamp> */
+  static async getActivity(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const groupId = req.params.id as string;
+      const isMember = await GroupRepository.isGroupMember(groupId, userId);
+      if (!isMember) return res.status(403).json({ error: 'Not a member of this group' });
+
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+      const cursor = req.query.cursor as string | undefined;
+
+      const activities = await GroupActivityRepository.getActivity(groupId, limit, cursor);
+
+      const nextCursor = activities.length === limit
+        ? activities[activities.length - 1].created_at
+        : null;
+
+      return res.status(200).json({ activities, nextCursor });
+    } catch (err) {
+      console.error('[GroupController] getActivity error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  /** POST /groups/:id/messages/:messageId/pin — admin-only */
+  static async pinMessage(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const { id: groupId, messageId } = req.params as { id: string; messageId: string };
+
+      await PermissionService.assertCan(userId, groupId, 'update_group');
+
+      const res2 = await pool.query(
+        `UPDATE group_messages
+         SET is_pinned = TRUE, pinned_by = $2, pinned_at = now()
+         WHERE id = $1 AND group_id = $3
+         RETURNING id, content, sender_id, created_at, is_pinned, pinned_by, pinned_at,
+           (SELECT display_name FROM users WHERE id = sender_id) AS sender_name,
+           (SELECT display_name FROM users WHERE id = $2) AS pinned_by_name`,
+        [messageId, userId, groupId]
+      );
+      if (!res2.rows[0]) return res.status(404).json({ error: 'Message not found' });
+
+      const pinned = res2.rows[0];
+
+      // Broadcast to group room
+      if (ioInstance) ioInstance.to(`group:${groupId}`).emit('message_pinned', pinned);
+
+      return res.status(200).json(pinned);
+    } catch (err: any) {
+      if (err.status === 403) return res.status(403).json({ error: err.message });
+      console.error('[GroupController] pinMessage error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  /** DELETE /groups/:id/messages/:messageId/pin — admin-only */
+  static async unpinMessage(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const { id: groupId, messageId } = req.params as { id: string; messageId: string };
+
+      await PermissionService.assertCan(userId, groupId, 'update_group');
+
+      await pool.query(
+        `UPDATE group_messages
+         SET is_pinned = FALSE, pinned_by = NULL, pinned_at = NULL
+         WHERE id = $1 AND group_id = $2`,
+        [messageId, groupId]
+      );
+
+      if (ioInstance) ioInstance.to(`group:${groupId}`).emit('message_unpinned', { messageId, groupId });
+
+      return res.status(200).json({ message: 'Unpinned' });
+    } catch (err: any) {
+      if (err.status === 403) return res.status(403).json({ error: err.message });
+      console.error('[GroupController] unpinMessage error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  /** GET /groups/:id/pinned-messages */
+  static async getPinnedMessages(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const groupId = req.params.id as string;
+      const isMember = await GroupRepository.isGroupMember(groupId, userId);
+      if (!isMember) return res.status(403).json({ error: 'Not a member' });
+
+      const result = await pool.query(
+        `SELECT
+           gm.id, gm.content, gm.created_at, gm.is_pinned, gm.pinned_at,
+           sender.display_name AS sender_name,
+           pinner.display_name AS pinned_by_name
+         FROM group_messages gm
+         JOIN users sender ON sender.id = gm.sender_id
+         LEFT JOIN users pinner ON pinner.id = gm.pinned_by
+         WHERE gm.group_id = $1 AND gm.is_pinned = TRUE
+           AND gm.is_deleted_for_everyone = FALSE
+         ORDER BY gm.pinned_at DESC`,
+        [groupId]
+      );
+
+      return res.status(200).json(result.rows);
+    } catch (err) {
+      console.error('[GroupController] getPinnedMessages error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  /**
+   * GET /groups/:id/invite-qr
+   * Returns a PNG image (Buffer) containing a QR code encoding the invite URL.
+   * The invite URL uses the same token as GET /groups/:id/invite.
+   */
+  static async getInviteQR(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const groupId = req.params.id as string;
+      const isMember = await GroupRepository.isGroupMember(groupId, userId);
+      if (!isMember) return res.status(403).json({ error: 'Not a member' });
+
+      // Reuse the existing invite token logic
+      const tokenRes = await pool.query(
+        `SELECT invite_token FROM groups WHERE id = $1`,
+        [groupId]
+      );
+      const token = tokenRes.rows[0]?.invite_token;
+      if (!token) return res.status(404).json({ error: 'Invite token not found' });
+
+      const frontendOrigin = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const inviteUrl = `${frontendOrigin}/join/${token}`;
+
+      const pngBuffer = await QRCode.toBuffer(inviteUrl, {
+        type: 'png',
+        width: 400,
+        margin: 2,
+        color: { dark: '#000000', light: '#ffffff' },
+        errorCorrectionLevel: 'H',
+      });
+
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=300'); // 5-min cache
+      return res.status(200).send(pngBuffer);
+    } catch (err) {
+      console.error('[GroupController] getInviteQR error:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }

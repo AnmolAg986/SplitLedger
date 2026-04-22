@@ -6,13 +6,18 @@ import { apiClient } from '../../../shared/api/axios';
 import { ConfirmModal } from '../../../shared/components/ConfirmModal';
 import { toast } from '../../../shared/store/useToastStore';
 import { useUnreadStore } from '../../../shared/store/useUnreadStore';
+import { PollCard } from './PollCard';
+import type { PollData } from './PollCard';
+import { PinnedMessagesBanner } from './PinnedMessagesBanner';
 
 interface GroupChatProps {
   groupId: string;
   members: { id: string; display_name: string }[];
+  /** Whether current user can pin (admin/owner) */
+  canPin?: boolean;
 }
 
-export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members }) => {
+export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [chat, setChat] = useState<any[]>([]);
   const [input, setInput] = useState('');
@@ -32,6 +37,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members }) => {
     onConfirm: () => void;
     type?: 'danger' | 'warning' | 'info';
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+  const [polls, setPolls] = useState<Record<string, PollData>>({});
+  const [livePin, setLivePin] = useState<any>(null);
+  const [liveUnpinId, setLiveUnpinId] = useState<string | null>(null);
 
   const showConfirm = (title: string, message: string, onConfirm: () => void, type: 'danger' | 'warning' | 'info' = 'info') => {
     setConfirmConfig({ isOpen: true, title, message, onConfirm, type });
@@ -110,17 +118,40 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members }) => {
     const unsub9 = on('error', (err: any) => {
       toast.error(err.message || 'An error occurred');
     });
+    const unsub10 = on('poll_created', (...args: unknown[]) => {
+      const poll = args[0] as PollData;
+      setPolls(prev => ({ ...prev, [poll.id]: poll }));
+    });
+    const unsub11 = on('poll_updated', (...args: unknown[]) => {
+      const update = args[0] as { poll_id: string; vote_counts: Record<string, number>; total_votes: number };
+      setPolls(prev => {
+        const existing = prev[update.poll_id];
+        if (!existing) return prev;
+        return { ...prev, [update.poll_id]: { ...existing, vote_counts: update.vote_counts, total_votes: update.total_votes } };
+      });
+    });
+    const unsub12 = on('message_pinned', (...args: unknown[]) => {
+      setLivePin(args[0]);
+    });
+    const unsub13 = on('message_unpinned', (...args: unknown[]) => {
+      const data = args[0] as { messageId: string };
+      setLiveUnpinId(data.messageId);
+    });
 
     return () => {
-      if (unsub1) unsub1(); 
-      if (unsub2) unsub2(); 
-      if (unsub3) unsub3(); 
-      if (unsub4) unsub4(); 
-      if (unsub5) unsub5(); 
-      if (unsub6) unsub6(); 
-      if (unsub7) unsub7(); 
-      if (unsub8) unsub8(); 
+      if (unsub1) unsub1();
+      if (unsub2) unsub2();
+      if (unsub3) unsub3();
+      if (unsub4) unsub4();
+      if (unsub5) unsub5();
+      if (unsub6) unsub6();
+      if (unsub7) unsub7();
+      if (unsub8) unsub8();
       if (unsub9) unsub9();
+      if (unsub10) unsub10();
+      if (unsub11) unsub11();
+      if (unsub12) unsub12();
+      if (unsub13) unsub13();
     };
   }, [isOpen, on, emit, groupId]);
 
@@ -137,7 +168,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members }) => {
     }, 1500);
   };
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
     
@@ -145,6 +176,26 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members }) => {
     emit('group_stop_typing', groupId);
 
     const trimmed = input.trim();
+
+    // /poll slash command: /poll Question? | Option A | Option B | ...
+    if (trimmed.startsWith('/poll ')) {
+      const parts = trimmed.slice(6).split('|').map(s => s.trim()).filter(Boolean);
+      const question = parts[0];
+      const options = parts.slice(1);
+      if (!question || options.length < 2) {
+        toast.error('Usage: /poll Question? | Option 1 | Option 2');
+        setInput('');
+        return;
+      }
+      try {
+        await apiClient.post(`/groups/${groupId}/polls`, { question, options });
+        toast.success('Poll created!');
+      } catch {
+        toast.error('Failed to create poll');
+      }
+      setInput('');
+      return;
+    }
 
     if (editingMessageId) {
       // Optimistic edit: reflect the change immediately without waiting for server
@@ -240,6 +291,15 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members }) => {
           </button>
         </div>
 
+        {/* Pinned messages banner — sits between header and message list */}
+        <PinnedMessagesBanner
+          groupId={groupId}
+          canPin={canPin}
+          livePin={livePin}
+          liveUnpinId={liveUnpinId}
+          onUnpin={id => setLiveUnpinId(id)}
+        />
+
       <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 custom-scrollbar">
         {chat.length === 0 && (
           <div className="h-full flex flex-col justify-center items-center text-zinc-500">
@@ -250,6 +310,18 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members }) => {
         {chat.map(msg => {
           const isMe = msg.sender_id === currentUser?.id;
           const isDeleted = msg.is_deleted_for_everyone;
+
+          // Render poll cards injected via socket (poll_id tag on message or stored in polls map)
+          if (msg.poll_id && polls[msg.poll_id]) {
+            return (
+              <div key={msg.id} className="w-full max-w-sm mx-auto">
+                <PollCard
+                  poll={polls[msg.poll_id]}
+                  onUpdate={updated => setPolls(prev => ({ ...prev, [updated.id]: updated }))}
+                />
+              </div>
+            );
+          }
           
           return (
             <div key={msg.id} className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'} group/msg`}>
@@ -310,8 +382,22 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members }) => {
 
                 {/* Context Menu Dropdown */}
                 {activeMenuId === msg.id && (
-                  <div className="absolute top-10 -left-32 w-36 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl py-1 z-50 animate-in fade-in zoom-in duration-200">
+                  <div className="absolute top-10 -left-36 w-40 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl py-1 z-50 animate-in fade-in zoom-in duration-200">
                     <button onClick={() => startEdit(msg)} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"><Edit2 className="w-3.5 h-3.5" /> Edit</button>
+                    {canPin && (
+                      <button
+                        onClick={async () => {
+                          setActiveMenuId(null);
+                          try {
+                            await apiClient.post(`/groups/${groupId}/messages/${msg.id}/pin`);
+                          } catch { /* broadcast handles UI */ }
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-amber-400 hover:bg-white/10 flex items-center gap-2"
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L12 22M2 12L22 12" strokeLinecap="round"/><circle cx="12" cy="5" r="2" fill="currentColor"/></svg>
+                        Pin message
+                      </button>
+                    )}
                     <button onClick={() => deleteMessage(msg.id, false)} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"><Trash2 className="w-3.5 h-3.5" /> Delete for me</button>
                     <button onClick={() => deleteMessage(msg.id, true)} className="w-full text-left px-4 py-2 text-sm text-rose-400 hover:bg-white/10 flex items-center gap-2"><Trash2 className="w-3.5 h-3.5" /> Delete for everyone</button>
                   </div>
@@ -340,7 +426,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members }) => {
             value={input}
             onChange={e => handleInput(e.target.value)}
             className="w-full bg-white/5 border border-white/10 rounded-full pl-5 pr-14 py-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 transition-colors shadow-inner"
-            placeholder={editingMessageId ? "Edit message..." : "Type a message..."}
+            placeholder={editingMessageId ? "Edit message..." : "Type a message or /poll Question? | Opt1 | Opt2"}
           />
           <div className="absolute right-2 flex items-center gap-1">
             {editingMessageId && (
