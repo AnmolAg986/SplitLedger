@@ -3,8 +3,9 @@ import { useAuthStore } from '../../../app/store/useAuthStore';
 import { apiClient } from '../../../shared/api/axios';
 import { toast } from '../../../shared/store/useToastStore';
 import { Camera, Loader2, Save, User } from 'lucide-react';
-
+import { useNavigate } from 'react-router-dom';
 export const Profile = () => {
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
@@ -27,7 +28,7 @@ export const Profile = () => {
       });
       setAvatarUrl(res.data.url);
       toast.success("Image uploaded successfully. Don't forget to save!");
-    } catch (err) {
+    } catch {
       toast.error('Failed to upload image');
     } finally {
       setUploading(false);
@@ -173,13 +174,26 @@ export const Profile = () => {
           </div>
           <button
             onClick={() => {
-              const { useNavigate } = require('react-router-dom');
+              
               // This is a bit hacky to use require in onClick but valid. Better to import it.
-              window.location.href = '/profile/notifications';
+              navigate('/profile/notifications');
+              // window.location.href = '/profile/notifications';
             }}
             className="px-6 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white font-medium hover:bg-white/10 transition-colors"
           >
             Configure
+          </button>
+        </div>
+        <div className="bg-[#0c0c0e] border border-white/10 rounded-3xl p-8 shadow-2xl relative overflow-hidden mt-6 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-white mb-1">Personal Analytics</h2>
+            <p className="text-sm text-zinc-400">View your spending trends, category breakdowns, and more.</p>
+          </div>
+          <button
+            onClick={() => navigate('/profile/analytics')}
+            className="px-6 py-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 font-bold hover:bg-cyan-500/20 transition-colors"
+          >
+            View Analytics
           </button>
         </div>
       </div>

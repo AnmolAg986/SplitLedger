@@ -17,10 +17,6 @@ export const Activity = () => {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchActivity();
-  }, []);
-
   const fetchActivity = async () => {
     try {
       // In a real app, this would be DashboardRepository.getFullActivity
@@ -34,6 +30,11 @@ export const Activity = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchActivity();
+  }, []);
 
   const fmtDate = (dateStr: string) => {
     const d = new Date(dateStr);

@@ -10,7 +10,10 @@ export interface CreateExpenseInput {
   category?: string;
   dueDate?: string;
   createdBy: string;
+  exchangeRate?: number;   // rate from expense currency to group base currency
+  baseAmount?: number;     // amount converted to group base currency
   splits: { userId: string; amount: number; shares?: number }[];
+  tags?: string[];
 }
 
 export class ExpenseRepository {
@@ -20,16 +23,20 @@ export class ExpenseRepository {
     try {
       await client.query('BEGIN');
 
+      const exchangeRate = input.exchangeRate ?? 1.0;
+      const baseAmount = input.baseAmount ?? input.amount;
+
       const expenseRes = await client.query(
-        `INSERT INTO expenses (group_id, paid_by, amount, currency, base_amount, description, split_type, category, created_by, due_date)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `INSERT INTO expenses (group_id, paid_by, amount, currency, base_amount, exchange_rate, description, split_type, category, created_by, due_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING *`,
         [
           input.groupId || null,
           input.paidBy,
           input.amount,
           input.currency,
-          input.amount, // base_amount = amount for same currency
+          baseAmount,
+          exchangeRate,
           input.description,
           input.splitType,
           input.category || null,
@@ -46,6 +53,15 @@ export class ExpenseRepository {
            VALUES ($1, $2, $3, $4, $5)`,
           [expense.id, split.userId, split.amount, input.currency, split.shares || 1]
         );
+      }
+
+      if (input.tags && input.tags.length > 0) {
+        for (const tag of input.tags) {
+          await client.query(
+            `INSERT INTO expense_tags (expense_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [expense.id, tag]
+          );
+        }
       }
 
       await client.query('COMMIT');
@@ -76,20 +92,35 @@ export class ExpenseRepository {
       [expenseId]
     );
 
+    const tagsRes = await pool.query(
+      `SELECT tag FROM expense_tags WHERE expense_id = $1`,
+      [expenseId]
+    );
+
     return {
       ...expenseRes.rows[0],
-      splits: splitsRes.rows
+      splits: splitsRes.rows,
+      tags: tagsRes.rows.map(r => r.tag)
     };
   }
 
   static async deleteExpense(expenseId: string, userId: string) {
     const res = await pool.query(
       `UPDATE expenses SET deleted_at = now()
-       WHERE id = $1 AND (created_by = $2 OR paid_by = $2) AND deleted_at IS NULL
+       WHERE id = $1 AND (created_by = $2 OR paid_by = $2) AND deleted_at IS NULL AND is_locked = false
        RETURNING id`,
       [expenseId, userId]
     );
-    return (res.rowCount ?? 0) > 0;
+    
+    if ((res.rowCount ?? 0) === 0) {
+      // Check if it failed because it was locked
+      const checkRes = await pool.query(`SELECT is_locked FROM expenses WHERE id = $1`, [expenseId]);
+      if (checkRes.rows[0]?.is_locked) {
+        return 'LOCKED';
+      }
+      return false;
+    }
+    return true;
   }
 
   static async updateExpense(expenseId: string, userId: string, updates: Partial<CreateExpenseInput>) {
@@ -98,12 +129,16 @@ export class ExpenseRepository {
       await client.query('BEGIN');
       
       const checkRes = await client.query(
-        `SELECT id FROM expenses WHERE id = $1 AND (created_by = $2 OR paid_by = $2) AND deleted_at IS NULL`,
+        `SELECT id, is_locked FROM expenses WHERE id = $1 AND (created_by = $2 OR paid_by = $2) AND deleted_at IS NULL`,
         [expenseId, userId]
       );
       if (checkRes.rows.length === 0) {
         await client.query('ROLLBACK');
         return null;
+      }
+      if (checkRes.rows[0].is_locked) {
+        await client.query('ROLLBACK');
+        return 'LOCKED';
       }
 
       const getRes = await client.query(`SELECT * FROM expenses WHERE id = $1`, [expenseId]);
@@ -130,6 +165,16 @@ export class ExpenseRepository {
             `INSERT INTO expense_splits (expense_id, user_id, amount, currency, shares)
              VALUES ($1, $2, $3, $4, $5)`,
             [expenseId, split.userId, split.amount, currency, split.shares || 1]
+          );
+        }
+      }
+
+      if (updates.tags) {
+        await client.query(`DELETE FROM expense_tags WHERE expense_id = $1`, [expenseId]);
+        for (const tag of updates.tags) {
+          await client.query(
+            `INSERT INTO expense_tags (expense_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [expenseId, tag]
           );
         }
       }
@@ -164,5 +209,18 @@ export class ExpenseRepository {
          AND e.deleted_at IS NULL`,
       [userId, friendId]
     );
+  }
+
+  static async lockGroupExpenses(groupId: string, beforeDate: Date, lockedBy: string) {
+    const res = await pool.query(
+      `UPDATE expenses
+       SET is_locked = true, locked_by = $1, locked_at = now()
+       WHERE group_id = $2
+         AND created_at < $3
+         AND deleted_at IS NULL
+         AND is_locked = false`,
+      [lockedBy, groupId, beforeDate]
+    );
+    return res.rowCount ?? 0;
   }
 }

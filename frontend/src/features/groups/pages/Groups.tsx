@@ -53,14 +53,15 @@ export const Groups = () => {
     }
   };
 
-  useEffect(() => {
-    refreshData();
-  }, [isArchivedView]);
-
   const refreshData = () => {
     setLoading(true);
     fetchGroups();
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refreshData();
+  }, [isArchivedView]);
 
   // Search friends to add as group members
   useEffect(() => {

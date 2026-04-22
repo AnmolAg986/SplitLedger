@@ -1,46 +1,24 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { apiClient } from '../../../shared/api/axios';
-import { Search, Users, UserCheck, Layers, Loader2, Clock, X } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { UserCheck, Layers } from 'lucide-react';
 import { Friends } from '../../friends/pages/Friends';
 import { Groups } from '../../groups/pages/Groups';
 
 type TabType = 'friends' | 'groups';
 
-interface ConnectionItem {
-  id: string;
-  display_name: string;
-  email?: string;
-  avatar_url?: string;
-  connection_type: 'friend' | 'group';
-  last_activity: string;
-  nickname?: string;
-  type?: string; // group type
-  member_count?: number;
-}
+
 
 export const Connections = () => {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = (searchParams.get('tab') as TabType) || 'friends';
   
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
-  const [connections, setConnections] = useState<ConnectionItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('connectionsRecentSearches') || '[]');
-    } catch {
-      return [];
-    }
-  });
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   // Sync tab from URL query param
   useEffect(() => {
     const tabParam = searchParams.get('tab') as TabType;
     if (tabParam && ['all', 'friends', 'groups'].includes(tabParam)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveTab(tabParam);
     }
   }, [searchParams]);

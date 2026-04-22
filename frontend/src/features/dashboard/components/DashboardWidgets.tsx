@@ -134,7 +134,7 @@ export const DashboardWidgets: React.FC<{ data: any }> = ({ data }) => {
                   await apiClient.post(`/friends/${data.smartNudge.user_id}/nudge`, { amount: data.smartNudge.amount });
                   toast.success('Reminder sent!');
                   setDismissedCards(prev => [...prev, 'smart-alert']);
-                } catch (err) {
+                } catch {
                   toast.error('Failed to send reminder');
                 }
               }}
@@ -242,6 +242,7 @@ export const DashboardWidgets: React.FC<{ data: any }> = ({ data }) => {
 
     if (storedSeed !== currentSeed || picks.length === 0 || !nonPriorities.every(np => picks.includes(np.id) || !picks.includes(np.id))) {
        // Need a reshuffle or initialization
+       // eslint-disable-next-line react-hooks/purity
        const shuffledNonPriorities = nonPriorities.sort(() => Math.random() - 0.5);
        picks = shuffledNonPriorities.map(w => w.id);
        localStorage.setItem('daily_card_seed', currentSeed);
@@ -256,6 +257,7 @@ export const DashboardWidgets: React.FC<{ data: any }> = ({ data }) => {
 
     // Assign dynamic colors
     const colorPalette = [...WIDGET_COLORS];
+    // eslint-disable-next-line react-hooks/purity
     let seed = Math.floor(Date.now() / (3 * 60 * 60 * 1000));
     for (let i = colorPalette.length - 1; i > 0; i--) {
         seed = (seed * 9301 + 49297) % 233280;

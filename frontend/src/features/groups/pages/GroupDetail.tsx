@@ -8,6 +8,9 @@ import { ExpenseCharts } from '../components/ExpenseCharts';
 import { GroupChat } from '../components/GroupChat';
 import { GroupInfoDrawer } from '../components/GroupInfoDrawer';
 import { GroupCalendarTimeline } from '../components/GroupCalendarTimeline';
+import { GroupAnalytics } from '../components/GroupAnalytics';
+import { GroupTemplates } from '../components/GroupTemplates';
+import { BulkImportModal } from '../components/BulkImportModal';
 import { ExpenseComments } from '../../expenses/components/ExpenseComments';
 import { ExpenseAttachments } from '../../expenses/components/ExpenseAttachments';
 import { InviteModal } from '../../../shared/components/InviteModal';
@@ -28,6 +31,8 @@ interface GroupExpense {
   due_date?: string;
   splits?: { user_id: string; display_name: string; amount: number; is_paid: boolean }[];
   participants: { id: string; display_name: string }[];
+  tags?: string[];
+  is_locked?: boolean;
 }
 
 interface GroupBalance {
@@ -64,13 +69,15 @@ export const GroupDetail = () => {
   const [balances, setBalances] = useState<GroupBalance[]>([]);
   const [simplifications, setSimplifications] = useState<any[]>([]);
   const [isExpenseModalOpen, setExpenseModalOpen] = useState(false);
+  const [isBulkImportOpen, setBulkImportOpen] = useState(false);
   const [expenseToEdit, setExpenseToEdit] = useState<GroupExpense | null>(null);
   const [loadingReminders, setLoadingReminders] = useState<Record<string, boolean>>({});
   const [isInfoOpen, setInfoOpen] = useState(false);
   const [isInviteOpen, setInviteOpen] = useState(false);
-  const [isTimelineVisible, setIsTimelineVisible] = useState(false);
+  const [activeView, setActiveView] = useState<'expenses' | 'timeline' | 'analytics'>('expenses');
   const [timelineFilterDate, setTimelineFilterDate] = useState<string | null>(null);
   const [expenseTab, setExpenseTab] = useState<'unsettled' | 'settled'>('unsettled');
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -116,7 +123,6 @@ export const GroupDetail = () => {
       markAsRead('group', id, 'expenses');
       markAsRead('group', id, 'payments');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const handleDeleteExpense = async (expenseId: string) => {
@@ -128,7 +134,7 @@ export const GroupDetail = () => {
           await apiClient.delete(`/expenses/${expenseId}`);
           toast.success('Expense deleted successfully');
           refreshData();
-        } catch (err) {
+        } catch {
           toast.error('Failed to delete expense');
         }
       },
@@ -145,7 +151,7 @@ export const GroupDetail = () => {
           await apiClient.post(`/groups/${id}/settle-all`);
           toast.success('All debts settled!');
           refreshData();
-        } catch (err) {
+        } catch {
           toast.error('Failed to settle debts');
         }
       },
@@ -162,7 +168,7 @@ export const GroupDetail = () => {
           await apiClient.post(`/expenses/${expenseId}/settle`);
           toast.success('Expense settled!');
           refreshData();
-        } catch (err) {
+        } catch {
           toast.error('Failed to settle expense');
         }
       },
@@ -175,7 +181,7 @@ export const GroupDetail = () => {
     try {
       await apiClient.post(`/expenses/${expenseId}/remind`);
       toast.success('Reminder sent!');
-    } catch (err) {
+    } catch {
       toast.error('Failed to send reminder');
     } finally {
       setLoadingReminders(prev => ({ ...prev, [expenseId]: false }));
@@ -186,7 +192,7 @@ export const GroupDetail = () => {
     try {
       await apiClient.post(`/groups/${id}/nudge/${targetUserId}`, { amount });
       toast.success('Reminder sent!');
-    } catch (err) {
+    } catch {
       toast.error('Failed to send reminder');
     }
   };
@@ -208,16 +214,33 @@ export const GroupDetail = () => {
               <span className="text-xs text-zinc-500 font-medium tracking-wide uppercase">{detail.type} • {detail.members?.length} members</span>
             </div>
          </div>
-         <div className="flex gap-3">
+         <div className="flex gap-3 pr-16">
            <button 
-             onClick={() => setIsTimelineVisible(!isTimelineVisible)}
+             onClick={() => setActiveView(activeView === 'analytics' ? 'expenses' : 'analytics')}
              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 border ${
-               isTimelineVisible 
+               activeView === 'analytics' 
+                 ? 'bg-white/10 border-white/20 text-white' 
+                 : 'bg-transparent border-white/10 text-zinc-400 hover:text-white hover:bg-white/5'
+             }`}
+           >
+             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg> Analytics
+           </button>
+           <button 
+             onClick={() => setActiveView(activeView === 'timeline' ? 'expenses' : 'timeline')}
+             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 border ${
+               activeView === 'timeline' 
                  ? 'bg-white/10 border-white/20 text-white' 
                  : 'bg-transparent border-white/10 text-zinc-400 hover:text-white hover:bg-white/5'
              }`}
            >
              <Calendar className="w-4 h-4" /> Timeline
+           </button>
+           <button 
+             onClick={() => setBulkImportOpen(true)}
+             className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-zinc-300 font-medium transition-colors flex items-center gap-2"
+           >
+             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+             Import CSV
            </button>
            <button 
              onClick={() => { setExpenseToEdit(null); setExpenseModalOpen(true); }}
@@ -242,13 +265,15 @@ export const GroupDetail = () => {
       <div className="flex-1 overflow-y-auto custom-scrollbar flex z-10">
          {/* Main Content: Expenses */}
          <div className="flex-1 p-8 border-r border-white/5 flex flex-col gap-8">
-            {isTimelineVisible ? (
+            {activeView === 'analytics' ? (
+              <GroupAnalytics groupId={detail.id} />
+            ) : activeView === 'timeline' ? (
               <div className="w-full h-full animate-in fade-in duration-300">
                 <GroupCalendarTimeline 
                    expenses={expenses} 
                    onDateClick={(dateStr) => {
                      setTimelineFilterDate(dateStr);
-                     setIsTimelineVisible(false);
+                     setActiveView('expenses');
                    }}
                 />
               </div>
@@ -287,6 +312,21 @@ export const GroupDetail = () => {
                     </div>
                   </div>
                   
+                  {/* Tag filter bar */}
+                  {(() => {
+                    const allTags = Array.from(new Set(expenses.flatMap(e => e.tags || [])));
+                    if (allTags.length === 0) return null;
+                    return (
+                      <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b border-white/5">
+                        {allTags.map(tag => (
+                          <button key={tag} onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all border ${selectedTag === tag ? 'bg-indigo-500 border-indigo-400 text-white shadow-md shadow-indigo-500/20' : 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20'}`}
+                          >#{tag}</button>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
                   <div className="flex flex-col gap-3">
                     {expenses.length === 0 ? (
                       <p className="text-zinc-500 text-sm">No expenses logged yet. Be the first!</p>
@@ -299,12 +339,16 @@ export const GroupDetail = () => {
                          const ed = new Date(e.created_at);
                          return filterD.getDate() === ed.getDate() && filterD.getMonth() === ed.getMonth() && filterD.getFullYear() === ed.getFullYear();
                        })
+                       .filter(e => !selectedTag || (e.tags && e.tags.includes(selectedTag)))
                        .map((e: GroupExpense) => (
                     <div key={e.id} className={`p-4 rounded-2xl border ${e.is_settled ? 'border-emerald-500/20' : 'border-rose-500/20'} bg-white/[0.02] hover:bg-white/[0.04] transition-colors relative overflow-hidden group`}>
                        <div className={`absolute left-0 top-0 bottom-0 w-1 transition-colors ${e.is_settled ? 'bg-emerald-500/50' : 'bg-rose-500/50'}`} />
-                       <div className="flex justify-between items-start mb-1">
+                        <div className="flex justify-between items-start mb-1">
                           <div className="flex flex-col gap-1 pr-2">
-                            <h4 className="text-[14px] font-bold text-white truncate">{e.description}</h4>
+                            <h4 className="text-[14px] font-bold text-white truncate flex items-center gap-2">
+                              {e.description}
+                              {e.is_locked && <span title="Locked"><svg className="w-3 h-3 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg></span>}
+                            </h4>
                           </div>
                          <div className="flex items-center gap-1.5 shrink-0">
                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -324,20 +368,24 @@ export const GroupDetail = () => {
                              >
                                {loadingReminders[e.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
                              </button>
-                             <button 
-                               onClick={() => { setExpenseToEdit(e); setExpenseModalOpen(true); }}
-                               className="p-1 bg-white/10 text-zinc-300 rounded hover:bg-white/20" 
-                               title="Edit"
-                             >
-                               <Edit2 className="w-3.5 h-3.5" />
-                             </button>
-                             <button 
-                               onClick={() => handleDeleteExpense(e.id)}
-                               className="p-1 bg-rose-500/20 text-rose-400 rounded hover:bg-rose-500/40" 
-                               title="Delete"
-                             >
-                               <Trash2 className="w-3.5 h-3.5" />
-                             </button>
+                             {(!e.is_locked) && (
+                               <button 
+                                 onClick={() => { setExpenseToEdit(e); setExpenseModalOpen(true); }}
+                                 className="p-1 bg-white/10 text-zinc-300 rounded hover:bg-white/20" 
+                                 title="Edit"
+                               >
+                                 <Edit2 className="w-3.5 h-3.5" />
+                               </button>
+                             )}
+                             {(!e.is_locked) && (
+                               <button 
+                                 onClick={() => handleDeleteExpense(e.id)}
+                                 className="p-1 bg-rose-500/20 text-rose-400 rounded hover:bg-rose-500/40" 
+                                 title="Delete"
+                               >
+                                 <Trash2 className="w-3.5 h-3.5" />
+                               </button>
+                             )}
                            </div>
                            <span className="text-[14px] font-black text-white bg-white/10 px-2.5 py-0.5 rounded-full">₹{e.amount}</span>
                          </div>
@@ -346,6 +394,15 @@ export const GroupDetail = () => {
                          <span>Paid by <span className="text-indigo-400/90 font-bold">{getFirstName(e.paid_by_name)}</span> <span className="mx-1 opacity-30">•</span>{getSplitSummary(e.participants, detail.members?.length || 0)}</span>
                          <span>{new Date(e.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
                        </div>
+                       {e.tags && e.tags.length > 0 && (
+                         <div className="flex flex-wrap gap-1.5 mt-2">
+                           {e.tags.map((tag, idx) => (
+                             <button key={idx} onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                               className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors border ${selectedTag === tag ? 'bg-indigo-500 border-indigo-400 text-white' : 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20'}`}
+                             >#{tag}</button>
+                           ))}
+                         </div>
+                       )}
                        <ExpenseComments expenseId={e.id} />
                        <ExpenseAttachments expenseId={e.id} />
                     </div>
@@ -456,6 +513,22 @@ export const GroupDetail = () => {
                   </div>
                </div>
             )}
+
+            <GroupTemplates 
+              groupId={id!} 
+              onUseTemplate={(t) => {
+                setExpenseToEdit({
+                  description: t.description || t.name,
+                  amount: t.amount,
+                  currency: t.currency || 'INR',
+                  category: t.category,
+                  due_date: '',
+                  paid_by: currentUser?.id || '',
+                  participants: t.participants
+                } as any);
+                setExpenseModalOpen(true);
+              }} 
+            />
          </div>
       </div>
        
@@ -480,6 +553,16 @@ export const GroupDetail = () => {
         onOpenInvite={() => {
           setInfoOpen(false);
           setInviteOpen(true);
+        }}
+      />
+
+      <BulkImportModal
+        isOpen={isBulkImportOpen}
+        onClose={() => setBulkImportOpen(false)}
+        groupId={id!}
+        onSuccess={() => {
+          setBulkImportOpen(false);
+          refreshData();
         }}
       />
 

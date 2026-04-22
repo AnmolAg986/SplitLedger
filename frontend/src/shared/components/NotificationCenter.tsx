@@ -1,35 +1,31 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNotificationStore } from '../store/useNotificationStore';
-import { api } from '../utils/api';
+import { apiClient } from '../api/axios';
 import { formatDistanceToNow } from 'date-fns';
-import { Bell, Check, Trash2, X, AlertCircle, Receipt, Users, Wallet } from 'lucide-react';
+import { Bell, Check, Trash2, X, AlertCircle, Receipt, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export function NotificationCenter() {
   const { 
     isOpen, setIsOpen, notifications, unreadCount, hasMore, 
-    setNotifications, addNotification, appendNotifications, 
+    setNotifications, appendNotifications, 
     markAsRead, markAllAsRead, deleteNotification 
   } = useNotificationStore();
   
   const navigate = useNavigate();
   const pageRef = useRef(0);
   const loadingRef = useRef(false);
-
-  useEffect(() => {
-    if (isOpen && notifications.length === 0) {
-      loadNotifications(0);
-    }
-  }, [isOpen]);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const loadNotifications = async (offset: number) => {
     if (loadingRef.current) return;
     loadingRef.current = true;
+    setIsLoadingMore(true);
     try {
       const limit = 50;
-      const res = await api.get(`/notifications?limit=${limit}&offset=${offset}`);
+      const res = await apiClient.get(`/notifications?limit=${limit}&offset=${offset}`);
       if (offset === 0) {
-        const countRes = await api.get('/notifications/unread-count');
+        const countRes = await apiClient.get('/notifications/unread-count');
         setNotifications(res.data, countRes.data.count);
       } else {
         appendNotifications(res.data, res.data.length === limit);
@@ -39,12 +35,19 @@ export function NotificationCenter() {
       console.error('Failed to load notifications', err);
     } finally {
       loadingRef.current = false;
+      setIsLoadingMore(false);
     }
   };
 
+  useEffect(() => {
+    if (isOpen && notifications.length === 0) {
+      loadNotifications(0);
+    }
+  }, [isOpen]);
+
   const handleMarkAllRead = async () => {
     try {
-      await api.patch('/notifications/read-all');
+      await apiClient.patch('/notifications/read-all');
       markAllAsRead();
     } catch (err) {
       console.error('Failed to mark all as read', err);
@@ -54,7 +57,7 @@ export function NotificationCenter() {
   const handleNotificationClick = async (notif: any) => {
     if (!notif.isRead) {
       try {
-        await api.patch(`/notifications/${notif.id}/read`);
+        await apiClient.patch(`/notifications/${notif.id}/read`);
         markAsRead(notif.id);
       } catch (err) {
         console.error('Failed to mark read', err);
@@ -78,7 +81,7 @@ export function NotificationCenter() {
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     try {
-      await api.delete(`/notifications/${id}`);
+      await apiClient.delete(`/notifications/${id}`);
       deleteNotification(id);
     } catch (err) {
       console.error('Failed to delete', err);
@@ -201,7 +204,7 @@ export function NotificationCenter() {
                   onClick={() => loadNotifications(pageRef.current + 50)}
                   className="w-full py-4 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
                 >
-                  {loadingRef.current ? 'Loading...' : 'Load older notifications'}
+                  {isLoadingMore ? 'Loading...' : 'Load older notifications'}
                 </button>
               )}
             </div>

@@ -11,7 +11,7 @@ export class ExpenseController {
       const userId = req.user?.id;
       if (!userId) throw new AppError(401, 'UNAUTHORIZED', 'Unauthorized');
 
-      const { groupId, paidBy, amount, currency, description, splitType, category, dueDate, participants, splits } = req.body;
+      const { groupId, paidBy, amount, currency, description, splitType, category, dueDate, participants, splits, tags } = req.body;
 
       if (!amount || !description) {
         throw new AppError(400, 'BAD_REQUEST', 'Amount and description are required');
@@ -39,7 +39,8 @@ export class ExpenseController {
         category,
         dueDate,
         createdBy: userId,
-        participants: finalParticipants
+        participants: finalParticipants,
+        tags
       };
 
       const expense = await ExpenseService.createExpense(input);
@@ -221,4 +222,104 @@ export class ExpenseController {
       next(err);
     }
   }
+
+  static async importCsv(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) throw new AppError(401, 'UNAUTHORIZED', 'Unauthorized');
+
+      const groupId = req.body.groupId || null;
+      if (!req.file) throw new AppError(400, 'BAD_REQUEST', 'No CSV file uploaded');
+
+      const fileContent = req.file.buffer.toString('utf-8');
+      
+      const { parse } = await import('csv-parse/sync');
+      const { UserRepository } = await import('../../persistence/UserRepository');
+
+      const records = parse(fileContent, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true
+      });
+
+      let imported = 0;
+      let failed = 0;
+      const errors: string[] = [];
+
+      for (let i = 0; i < records.length; i++) {
+        const record = records[i] as any;
+        try {
+           const description = record.description || record.Description || record.DESCRIPTION;
+           const amountStr = record.amount || record.Amount || record.AMOUNT;
+           const amount = parseFloat(amountStr);
+           const paidByEmail = record.paid_by_email || record.PaidByEmail || record['Paid By Email'];
+           const participantsStr = record.participants || record.Participants || record.PARTICIPANTS;
+           const category = record.category || record.Category || record.CATEGORY;
+           const dateStr = record.date || record.Date || record.DATE;
+           
+           if (!description || isNaN(amount)) {
+             throw new Error('Description and valid amount are required');
+           }
+
+           let paidById = userId;
+           if (paidByEmail) {
+              const u = await UserRepository.findByIdentifier(paidByEmail);
+              if (u) paidById = u.id;
+              else throw new Error(`Payer email ${paidByEmail} not found`);
+           }
+
+           let participantIds: string[] = [];
+           if (participantsStr) {
+             const emails = participantsStr.split(',').map((e: string) => e.trim()).filter(Boolean);
+             for (const email of emails) {
+               const u = await UserRepository.findByIdentifier(email);
+               if (u) participantIds.push(u.id);
+               else throw new Error(`Participant email ${email} not found`);
+             }
+           } else {
+             participantIds = [paidById];
+           }
+
+           if (!participantIds.includes(paidById)) {
+             participantIds.push(paidById);
+           }
+
+           const splitAmount = Number((amount / participantIds.length).toFixed(2));
+           const splits = participantIds.map((pid: string) => ({
+             userId: pid,
+             value: splitAmount
+           }));
+           
+           const totalSplit = splits.reduce((acc: number, curr: any) => acc + curr.value, 0);
+           if (totalSplit !== amount) {
+             splits[0].value = Number((splits[0].value + (amount - totalSplit)).toFixed(2));
+           }
+
+           const input: CreateExpenseServiceInput = {
+             groupId,
+             paidBy: paidById,
+             amount,
+             currency: 'INR',
+             description,
+             splitType: 'equal',
+             category: category || 'General',
+             dueDate: dateStr ? new Date(dateStr).toISOString() : undefined,
+             createdBy: userId,
+             participants: splits
+           };
+
+           await ExpenseService.createExpense(input);
+           imported++;
+        } catch (err: any) {
+           failed++;
+           errors.push(`Row ${i + 1} (${record.description || 'Unknown'}): ${err.message}`);
+        }
+      }
+
+      return res.status(200).json({ imported, failed, errors });
+    } catch (err) {
+      next(err);
+    }
+  }
 }
+

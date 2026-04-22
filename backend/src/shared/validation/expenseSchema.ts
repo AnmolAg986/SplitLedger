@@ -18,6 +18,7 @@ export const createExpenseSchema = z.object({
     dueDate: z.string().optional(), // date string
     participants: z.array(splitInputSchema).optional(),
     splits: z.array(splitInputSchema).optional(),
+    tags: z.array(z.string().max(50)).optional(),
   }).refine(data => data.participants || data.splits, {
     message: "Either 'participants' or 'splits' must be provided",
     path: ['participants'],
@@ -34,5 +35,6 @@ export const updateExpenseSchema = z.object({
     dueDate: z.string().optional(),
     participants: z.array(splitInputSchema).optional(),
     splits: z.array(splitInputSchema).optional(),
+    tags: z.array(z.string().max(50)).optional(),
   })
 });

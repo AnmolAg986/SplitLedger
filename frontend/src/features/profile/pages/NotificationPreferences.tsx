@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiClient as api } from '../../../shared/api/axios';
 import { ArrowLeft, Bell, Mail, Smartphone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -19,11 +19,6 @@ export function NotificationPreferences() {
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [loading, setLoading] = useState(true);
   const [pushEnabled, setPushEnabled] = useState(false);
-
-  useEffect(() => {
-    loadPreferences();
-    checkPushStatus();
-  }, []);
 
   const loadPreferences = async () => {
     try {
@@ -55,13 +50,19 @@ export function NotificationPreferences() {
     }
   };
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadPreferences();
+    checkPushStatus();
+  }, []);
+
   const handleToggle = async (key: keyof Preferences) => {
     if (!prefs) return;
     const newPrefs = { ...prefs, [key]: !prefs[key] };
     setPrefs(newPrefs);
     try {
       await api.patch('/notifications/preferences', newPrefs);
-    } catch (err) {
+    } catch {
       toast.error('Failed to update preferences');
       setPrefs(prefs); // revert
     }
@@ -100,7 +101,7 @@ export function NotificationPreferences() {
         
         setPushEnabled(true);
         toast.success('Push notifications enabled!');
-      } catch (subErr) {
+      } catch {
         // Dummy key will fail to subscribe in real browsers
         toast.error('Failed to subscribe to push service (requires valid VAPID keys)');
       }

@@ -47,7 +47,7 @@ export const Friends = () => {
 
   const fetchFriends = async () => {
     try {
-      const [friendsRes, insightsRes, pendingRes, recentRes] = await Promise.all([
+      const [friendsRes, insightsRes, pendingRes] = await Promise.all([
         apiClient.get('/friends'),
         apiClient.get('/friends/insights'),
         apiClient.get('/friends/pending'),
@@ -64,6 +64,7 @@ export const Friends = () => {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchFriends();
   }, []);
 
@@ -101,8 +102,8 @@ export const Friends = () => {
   };
 
   const filteredFriends = friends.filter(f => 
-    f.display_name.toLowerCase().includes(search.toLowerCase()) ||
-    f.email.toLowerCase().includes(search.toLowerCase()) ||
+    f.display_name?.toLowerCase().includes(search.toLowerCase()) ||
+    f.email?.toLowerCase().includes(search.toLowerCase()) ||
     f.phone_number?.toLowerCase().includes(search.toLowerCase())
   );
 

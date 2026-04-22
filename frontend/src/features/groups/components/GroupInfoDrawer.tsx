@@ -21,6 +21,8 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [showLockPrompt, setShowLockPrompt] = useState(false);
+  const [lockDate, setLockDate] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({ 
     name: detail.name, 
@@ -77,7 +79,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
       setShowAddMember(false);
       toast.success('Member added successfully');
       onRefresh();
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to add member');
     } finally {
       setActionLoading(null);
@@ -94,7 +96,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
           await apiClient.delete(`/groups/${detail.id}/members/${userId}`);
           toast.success(`${name} removed`);
           onRefresh();
-        } catch (err: any) {
+        } catch {
           toast.error('Failed to remove member');
         } finally {
           setActionLoading(null);
@@ -111,7 +113,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
       await apiClient.put(`/groups/${detail.id}/members/${userId}/role`, { role: newRole });
       toast.success('Role updated');
       onRefresh();
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to update role');
     } finally {
       setActionLoading(null);
@@ -124,7 +126,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
       await apiClient.post(`/groups/${detail.id}/members/${userId}/approve`);
       toast.success('Member approved');
       onRefresh();
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to approve member');
     } finally {
       setActionLoading(null);
@@ -137,7 +139,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
       await apiClient.post(`/groups/${detail.id}/members/${userId}/reject`);
       toast.success('Member rejected');
       onRefresh();
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to reject member');
     } finally {
       setActionLoading(null);
@@ -154,7 +156,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
           await apiClient.delete(`/groups/${detail.id}/members/${currentUserId}`);
           toast.success('You have left the group');
           window.location.href = '/groups';
-        } catch (err: any) {
+        } catch {
           toast.error('Failed to leave group');
         } finally {
           setActionLoading(null);
@@ -176,7 +178,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
       toast.success('Group updated');
       setIsEditing(false);
       onRefresh();
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to update group');
     } finally {
       setActionLoading(null);
@@ -198,7 +200,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
       setEditForm(prev => ({ ...prev, avatarUrl: newUrl }));
       
       toast.success('Image uploaded successfully');
-    } catch (err) {
+    } catch {
       toast.error('Failed to update group picture');
     } finally {
       setActionLoading(null);
@@ -216,7 +218,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
           await apiClient.post(`/groups/${detail.id}/archive`, { isArchived: isArchiving });
           toast.success(isArchiving ? 'Group archived' : 'Group unarchived');
           onRefresh();
-        } catch (err: any) {
+        } catch {
           toast.error('Failed to update archive status');
         } finally {
           setActionLoading(null);
@@ -235,7 +237,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
           await apiClient.delete(`/groups/${detail.id}`);
           toast.success('Group deleted permanently');
           window.location.href = '/groups';
-        } catch (err: any) {
+        } catch {
           toast.error('Failed to delete group');
         } finally {
           setActionLoading(null);
@@ -243,6 +245,21 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
       },
       'danger'
     );
+  };
+
+  const handleLockExpenses = async () => {
+    if (!lockDate) return toast.error('Please select a date');
+    setActionLoading('lock');
+    try {
+      const res = await apiClient.post(`/groups/${detail.id}/lock-expenses`, { beforeDate: lockDate });
+      toast.success(res.data.message || 'Expenses locked successfully');
+      setShowLockPrompt(false);
+      onRefresh();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to lock expenses');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const fetchTemplates = async () => {
@@ -263,7 +280,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
           await apiClient.delete(`/groups/templates/${templateId}`);
           toast.success('Recurring expense canceled');
           fetchTemplates();
-        } catch (err) {
+        } catch {
           toast.error('Failed to cancel recurring expense');
         }
       },
@@ -273,6 +290,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
 
   useEffect(() => {
     if (isOpen && detail?.id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEditForm({ 
         name: detail.name, 
         description: detail.description || '',
@@ -635,6 +653,40 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
         <div className="p-4 border-t border-white/5 shrink-0 space-y-2">
           {isAdmin ? (
             <>
+              {showLockPrompt ? (
+                <div className="p-3 rounded-xl border border-white/10 bg-white/5 space-y-3 animate-in fade-in zoom-in-95 duration-200">
+                  <p className="text-xs text-zinc-300 font-medium">Lock all expenses before this date:</p>
+                  <input 
+                    type="date" 
+                    value={lockDate}
+                    onChange={e => setLockDate(e.target.value)}
+                    className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                  />
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => setShowLockPrompt(false)}
+                      className="flex-1 py-2 rounded-lg text-xs font-bold text-zinc-400 hover:text-white transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={handleLockExpenses}
+                      disabled={actionLoading === 'lock'}
+                      className="flex-1 py-2 rounded-lg text-xs font-bold bg-amber-500 text-black hover:bg-amber-400 transition-colors flex items-center justify-center"
+                    >
+                      {actionLoading === 'lock' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm Lock'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowLockPrompt(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border bg-zinc-800/50 border-white/10 text-zinc-300 text-sm font-bold hover:bg-white/10 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                  Lock Expenses
+                </button>
+              )}
               <button
                 onClick={handleArchiveGroup}
                 disabled={actionLoading !== null}

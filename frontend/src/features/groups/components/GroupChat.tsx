@@ -50,7 +50,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members }) => {
       emit('leave_group_room', groupId);
     }
     return () => emit('leave_group_room', groupId);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, groupId, emit]);
 
   useEffect(() => {
@@ -225,15 +224,21 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members }) => {
   }
 
   return (
-    <div className="fixed right-0 top-0 bottom-0 w-1/2 bg-black/90 backdrop-blur-xl border-l border-white/10 shadow-2xl flex flex-col z-50 overflow-hidden">
-      <div className="p-4 border-b border-white/5 flex justify-between items-center shadow-sm z-10 bg-black/50">
-        <span className="text-[13px] font-semibold text-zinc-500 uppercase tracking-widest">
-          Group Chat
-        </span>
-        <button onClick={() => setIsOpen(false)} className="hover:bg-white/10 p-2 rounded-full transition-colors text-zinc-400 hover:text-white">
-          <X className="w-5 h-5" />
-        </button>
-      </div>
+    <>
+      {/* Backdrop — click to close */}
+      <div
+        className="fixed inset-0 bg-black/40 z-[59]"
+        onClick={() => setIsOpen(false)}
+      />
+      <div className="fixed right-0 top-0 bottom-0 w-1/2 bg-black/90 backdrop-blur-xl border-l border-white/10 shadow-2xl flex flex-col z-[60] overflow-hidden">
+        <div className="p-4 border-b border-white/5 flex justify-between items-center shadow-sm z-10 bg-black/50">
+          <span className="text-[13px] font-semibold text-zinc-500 uppercase tracking-widest">
+            Group Chat
+          </span>
+          <button onClick={() => setIsOpen(false)} className="hover:bg-white/10 p-2 rounded-full transition-colors text-zinc-400 hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
       <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 custom-scrollbar">
         {chat.length === 0 && (
@@ -359,5 +364,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members }) => {
         type={confirmConfig.type}
       />
     </div>
+    </>
   );
 };

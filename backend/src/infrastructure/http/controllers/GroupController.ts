@@ -138,7 +138,7 @@ export class GroupController {
       const isMember = await GroupRepository.isGroupMember(groupId, userId);
       if (!isMember) return res.status(403).json({ error: 'Not a member of this group' });
 
-      const { pool } = require('../../config/db');
+      const { pool } = require('../../../config/db');
       const client = await pool.connect();
       try {
         const result = await client.query(`
@@ -439,6 +439,34 @@ export class GroupController {
       return res.status(200).json({ message: 'Nudge sent successfully' });
     } catch (err) {
       console.error('[GroupController] nudgeMember error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async lockExpenses(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const groupId = req.params.id as string;
+      const { beforeDate } = req.body;
+
+      if (!beforeDate) {
+        return res.status(400).json({ error: 'beforeDate is required' });
+      }
+
+      // Check if user is admin or owner
+      const role = await GroupRepository.getGroupMemberRole(groupId, userId);
+      if (role !== 'admin' && role !== 'owner') {
+        return res.status(403).json({ error: 'Only admins can lock expenses' });
+      }
+
+      const { ExpenseService } = await import('../../../application/services/ExpenseService');
+      const count = await ExpenseService.lockGroupExpenses(groupId, new Date(beforeDate), userId);
+
+      return res.status(200).json({ message: `${count} expenses locked successfully` });
+    } catch (err) {
+      console.error('[GroupController] lockExpenses error:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }

@@ -43,6 +43,7 @@ export const ExpenseComments: React.FC<ExpenseCommentsProps> = ({ expenseId }) =
 
   useEffect(() => {
     if (isExpanded) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchComments();
     }
   }, [isExpanded, expenseId]);

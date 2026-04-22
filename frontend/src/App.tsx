@@ -16,6 +16,7 @@ import { Profile } from './features/dashboard/pages/Profile';
 import { Connections } from './features/connections/pages/Connections';
 import { ToastContainer } from './shared/components/ToastContainer';
 import { NotificationPreferences } from './features/profile/pages/NotificationPreferences';
+import { Analytics } from './features/profile/pages/Analytics';
 
 export const App = () => {
   return (
@@ -41,6 +42,7 @@ export const App = () => {
             <Route path="/activity" element={<Activity />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/profile/notifications" element={<NotificationPreferences />} />
+            <Route path="/profile/analytics" element={<Analytics />} />
 
             {/* Legacy redirects */}
             <Route path="/friends" element={<Navigate to="/connections?tab=friends" replace />} />

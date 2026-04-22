@@ -1,15 +1,10 @@
 import { toast } from '../../../shared/store/useToastStore';
 import React, { useState, useEffect } from 'react';
-import { X, Search, Check, Plus } from 'lucide-react';
+import { X, Search, Bookmark } from 'lucide-react';
 import { apiClient } from '../../../shared/api/axios';
+import { templateApi } from '../../../shared/api/templateApi';
 import { CurrencySelector } from '../../../shared/components/CurrencySelector';
-import { getCurrencyData } from '../../../shared/constants/currencies';
 import { useAuthStore } from '../../../app/store/useAuthStore';
-
-interface Split {
-  userId: string;
-  amount: number;
-}
 
 interface ExpenseModalProps {
   isOpen: boolean;
@@ -41,23 +36,35 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   const [isMemberSearchOpen, setIsMemberSearchOpen] = useState(false);
   const [splitType, setSplitType] = useState<'equal' | 'exact' | 'percentage' | 'shares'>('equal');
   const [customSplits, setCustomSplits] = useState<Record<string, string>>({});
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
   const [error, setError] = useState('');
 
-  // Initialize paidBy and involvedIds when modal opens or members change
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
+
+  const getMemberId = (m: any) => m?.user_id || m?.id || '';
+  const getMemberName = (m: any) => m?.display_name || m?.name || (getMemberId(m) === 'me' ? 'You' : getMemberId(m));
+
   useEffect(() => {
     if (expenseToEdit) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDescription(expenseToEdit.description);
       setAmount(expenseToEdit.amount.toString());
       setCurrency(expenseToEdit.currency);
       setCategory(expenseToEdit.category || '');
       setDueDate(expenseToEdit.due_date ? expenseToEdit.due_date.substring(0, 10) : '');
       setPaidBy(expenseToEdit.paid_by || getMemberId(groupMembers[0]));
+      setTags(expenseToEdit.tags || []);
       // Default all members as involved
       setInvolvedIds(groupMembers.map(m => getMemberId(m)));
     } else {
       setDescription('');
       setAmount('');
       setCategory('');
+      setTags([]);
       setDueDate('');
       setPaidBy(getMemberId(groupMembers[0]));
       setInvolvedIds(groupMembers.map(m => getMemberId(m)));
@@ -93,8 +100,32 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
     }
   }, [expenseToEdit, isOpen, groupMembers.length]);
 
-  const getMemberId = (m: any) => m?.user_id || m?.id || '';
-  const getMemberName = (m: any) => m?.display_name || m?.name || (getMemberId(m) === 'me' ? 'You' : getMemberId(m));
+  useEffect(() => {
+    if (isOpen) {
+      templateApi.getTemplates(groupId).then(setTemplates).catch(console.error);
+    }
+  }, [isOpen, groupId]);
+
+  const applyTemplate = (t: any) => {
+    setDescription(t.description || '');
+    setAmount(t.amount.toString());
+    setCategory(t.category || '');
+    setSplitType(t.split_mode as any);
+    if (t.participants && Array.isArray(t.participants)) {
+      const ids = t.participants.map((p: any) => p.userId);
+      setInvolvedIds(ids);
+      const custom: Record<string, string> = {};
+      t.participants.forEach((p: any) => {
+        if (t.split_mode === 'exact' || t.split_mode === 'percentage') {
+          custom[p.userId] = p.amount.toString();
+        } else if (t.split_mode === 'shares') {
+          custom[p.userId] = (p.shares || 1).toString();
+        }
+      });
+      setCustomSplits(custom);
+    }
+    setShowTemplates(false);
+  };
 
   const categorySuggestions = React.useMemo(() => {
     if (!groupType || groupType === 'other') return [];
@@ -183,7 +214,8 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
         category,
         dueDate: dueDate || undefined,
         splits,
-        date: expenseDate
+        date: expenseDate,
+        tags
       };
 
       if (expenseToEdit) {
@@ -198,12 +230,27 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
              is_active: true
            });
         }
+        if (saveAsTemplate && templateName) {
+          try {
+            await templateApi.createTemplate({
+              groupId,
+              name: templateName,
+              description,
+              amount: totalAmount,
+              splitMode: splitType,
+              category,
+              participants: splits
+            });
+          } catch (err) {
+            console.error('Failed to save template', err);
+          }
+        }
       }
       onSuccess();
       onClose();
     } catch (err) {
       console.error(err);
-      toast.info();
+      toast.error('Failed to save expense');
     } finally {
       setLoading(false);
     }
@@ -218,6 +265,29 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
         <h2 className="text-xl font-bold text-white mb-6 shrink-0">
           {expenseToEdit ? 'Edit Expense' : 'Add Expense'}
         </h2>
+
+        {templates.length > 0 && !expenseToEdit && (
+          <div className="mb-4 shrink-0">
+            <button type="button" onClick={() => setShowTemplates(!showTemplates)} className="flex items-center gap-2 text-xs text-indigo-400 hover:text-indigo-300 font-bold transition-colors">
+              <Bookmark className="w-3 h-3" />
+              {showTemplates ? 'Hide Templates' : 'Use a Template'}
+            </button>
+            {showTemplates && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {templates.map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => applyTemplate(t)}
+                    className="px-3 py-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-xs text-indigo-300 hover:bg-indigo-500/20 transition-colors"
+                  >
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {error && <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm rounded-lg shrink-0">{error}</div>}
 
@@ -417,6 +487,36 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
           </div>
 
           <div>
+             <label className="block text-xs text-zinc-400 mb-1 font-medium">Tags (Optional)</label>
+             <div className="flex flex-wrap gap-2 mb-2">
+               {tags.map((tag, idx) => (
+                 <span key={idx} className="px-2 py-1 bg-indigo-500/10 text-indigo-300 text-xs rounded-md flex items-center gap-1 border border-indigo-500/20 font-medium">
+                   {tag}
+                   <button type="button" onClick={() => setTags(tags.filter((_, i) => i !== idx))} className="text-indigo-400 hover:text-indigo-200">
+                     <X className="w-3 h-3" />
+                   </button>
+                 </span>
+               ))}
+             </div>
+             <input 
+               type="text" 
+               value={tagInput}
+               onChange={(e) => setTagInput(e.target.value)}
+               onKeyDown={(e) => {
+                 if (e.key === 'Enter' && tagInput.trim()) {
+                   e.preventDefault();
+                   if (!tags.includes(tagInput.trim().toLowerCase())) {
+                     setTags([...tags, tagInput.trim().toLowerCase()]);
+                   }
+                   setTagInput('');
+                 }
+               }}
+               className="w-full bg-black/50 border border-white/10 rounded-lg p-3 text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-colors"
+               placeholder="Press Enter to add tags (e.g. food, trip2024)"
+             />
+          </div>
+
+          <div>
              <label className="block text-xs text-zinc-400 mb-1 font-medium">Due Date (Optional)</label>
              <input 
                type="date" 
@@ -456,6 +556,30 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                     ))}
                  </div>
                )}
+             </div>
+          )}
+
+          {!expenseToEdit && (
+            <div className="pt-4 border-t border-white/5 shrink-0">
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input 
+                  type="checkbox" 
+                  checked={saveAsTemplate}
+                  onChange={(e) => setSaveAsTemplate(e.target.checked)}
+                  className="w-4 h-4 rounded border-white/20 bg-black/50 text-indigo-500 focus:ring-indigo-500/50"
+                />
+                <span className="text-sm font-medium text-zinc-300 group-hover:text-white transition-colors">Save as Template</span>
+              </label>
+              {saveAsTemplate && (
+                <input
+                  type="text"
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  placeholder="Template Name (e.g., Monthly Internet)"
+                  className="mt-2 w-full bg-black/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors"
+                  required={saveAsTemplate}
+                />
+              )}
             </div>
           )}
 

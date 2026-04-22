@@ -5,6 +5,8 @@ import { ioInstance } from '../../infrastructure/websocket/socketServer';
 import { SplitStrategyFactory } from '../../shared/services/splits/SplitStrategyFactory';
 import { SplitInput } from '../../shared/services/splits/ISplitStrategy';
 import { AppError } from '../../shared/errors/AppError';
+import { getExchangeRate } from '../../shared/services/CurrencyService';
+import { pool } from '../../config/db';
 
 import { NotificationService as NotificationSys } from './NotificationService';
 
@@ -19,6 +21,7 @@ export interface CreateExpenseServiceInput {
   dueDate?: string;
   createdBy: string;
   participants: SplitInput[];
+  tags?: string[];
 }
 
 export class ExpenseService {
@@ -33,6 +36,29 @@ export class ExpenseService {
       throw new AppError(400, 'INVALID_SPLIT', err.message);
     }
 
+    // 2. Get exchange rate for multi-currency support
+    let exchangeRate = 1.0;
+    let baseAmount = input.amount;
+
+    if (input.groupId) {
+      try {
+        // Get group's base_currency
+        const groupRes = await pool.query(
+          `SELECT base_currency FROM groups WHERE id = $1`,
+          [input.groupId]
+        );
+        const groupBaseCurrency = groupRes.rows[0]?.base_currency || 'INR';
+        
+        if (groupBaseCurrency !== input.currency) {
+          exchangeRate = await getExchangeRate(input.currency, groupBaseCurrency);
+          baseAmount = Math.round(input.amount * exchangeRate * 100) / 100;
+        }
+      } catch (err) {
+        // Non-blocking — fall back to 1:1 if rate lookup fails
+        console.warn('[ExpenseService] Exchange rate lookup failed, defaulting to 1.0:', err);
+      }
+    }
+
     const repoInput: CreateExpenseInput = {
       groupId: input.groupId,
       paidBy: input.paidBy,
@@ -43,6 +69,8 @@ export class ExpenseService {
       category: input.category,
       dueDate: input.dueDate,
       createdBy: input.createdBy,
+      exchangeRate,
+      baseAmount,
       splits: computedSplits.map(s => {
         const participant = input.participants.find(p => p.userId === s.userId);
         return { 
@@ -50,10 +78,11 @@ export class ExpenseService {
           amount: s.amount,
           shares: participant?.value // pass down shares/weight
         };
-      })
+      }),
+      tags: input.tags
     };
 
-    // 2. Persist to DB
+    // 3. Persist to DB
     const expense = await ExpenseRepository.createExpense(repoInput);
 
     // 3. Side effects (streaks, sockets, notifications)
@@ -123,6 +152,7 @@ export class ExpenseService {
     }
 
     const updated = await ExpenseRepository.updateExpense(expenseId, userId, repoUpdates);
+    if (updated === 'LOCKED') throw new AppError(403, 'FORBIDDEN', 'Cannot edit a locked expense');
     if (!updated) throw new AppError(404, 'EXPENSE_NOT_FOUND', 'Expense not found or not authorized');
 
     return updated;
@@ -136,6 +166,7 @@ export class ExpenseService {
 
   static async deleteExpense(expenseId: string, userId: string) {
     const deleted = await ExpenseRepository.deleteExpense(expenseId, userId);
+    if (deleted === 'LOCKED') throw new AppError(403, 'FORBIDDEN', 'Cannot delete a locked expense');
     if (!deleted) throw new AppError(404, 'EXPENSE_NOT_FOUND', 'Expense not found or not authorized');
     return true;
   }
@@ -176,5 +207,9 @@ export class ExpenseService {
 
     await ExpenseRepository.recordReminderSent(expenseId);
     return true;
+  }
+
+  static async lockGroupExpenses(groupId: string, beforeDate: Date, userId: string) {
+    return await ExpenseRepository.lockGroupExpenses(groupId, beforeDate, userId);
   }
 }

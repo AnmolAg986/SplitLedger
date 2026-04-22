@@ -1,8 +1,11 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { ExpenseController } from '../controllers/ExpenseController';
 import { requireAuth } from '../middleware/authMiddleware';
 import { validate } from '../middleware/validate';
 import { createExpenseSchema, updateExpenseSchema } from '../../../shared/validation/expenseSchema';
+
+import { SettlementController } from '../controllers/SettlementController';
 
 const router = Router();
 
@@ -12,14 +15,19 @@ router.put('/:id', requireAuth, validate(updateExpenseSchema), ExpenseController
 router.delete('/:id', requireAuth, ExpenseController.deleteExpense);
 router.post('/:id/remind', requireAuth, ExpenseController.remindExpense);
 router.post('/recurring', requireAuth, ExpenseController.createRecurringTemplate);
-router.post('/:id/settle', requireAuth, require('../controllers/SettlementController').SettlementController.settleSpecificExpense);
+router.post('/:id/settle', requireAuth, SettlementController.settleSpecificExpense);
 
 router.get('/:id/comments', requireAuth, ExpenseController.getComments);
 router.post('/:id/comments', requireAuth, ExpenseController.addComment);
 router.delete('/:id/comments/:commentId', requireAuth, ExpenseController.deleteComment);
 
+const csvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
+router.post('/import', requireAuth, csvUpload.single('file'), ExpenseController.importCsv);
+
 // Receipt Attachments
-import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { ExpenseAttachmentController } from '../controllers/ExpenseAttachmentController';

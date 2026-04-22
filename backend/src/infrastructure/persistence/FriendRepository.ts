@@ -135,6 +135,10 @@ export class FriendRepository {
       `SELECT DISTINCT e.id, e.description, e.amount, e.currency, e.paid_by,
               e.split_type, e.category, e.created_at,
               payer.display_name as paid_by_name,
+              COALESCE(
+                (SELECT json_agg(tag) FROM expense_tags et WHERE et.expense_id = e.id),
+                '[]'::json
+              ) as tags,
               CASE 
                 WHEN e.paid_by = $1 THEN
                   NOT EXISTS (SELECT 1 FROM expense_splits es2 WHERE es2.expense_id = e.id AND es2.user_id = $2 AND es2.is_paid = false)

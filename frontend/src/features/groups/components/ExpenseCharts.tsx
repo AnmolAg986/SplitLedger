@@ -19,7 +19,7 @@ export const ExpenseCharts: React.FC<ExpenseChartsProps> = ({ expenses, totalOwe
   }, [expenses]);
 
   const catEntries = Object.entries(categories).sort((a, b) => b[1] - a[1]);
-  const total = catEntries.reduce((sum, [_, amt]) => sum + amt, 0);
+  const total = catEntries.reduce((sum, [, amt]) => sum + amt, 0);
 
   if (total === 0) return null;
 
@@ -53,6 +53,7 @@ export const ExpenseCharts: React.FC<ExpenseChartsProps> = ({ expenses, totalOwe
       const percent = amt / total;
       const startX = getCoordinatesForPercent(cumulativePercent)[0];
       const startY = getCoordinatesForPercent(cumulativePercent)[1];
+      // eslint-disable-next-line react-hooks/immutability
       cumulativePercent += percent;
       const endX = getCoordinatesForPercent(cumulativePercent)[0];
       const endY = getCoordinatesForPercent(cumulativePercent)[1];

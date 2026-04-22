@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../../app/store/useAuthStore';
 import { apiClient } from '../../../shared/api/axios';
-import { ArrowUpRight, Sparkles, Plus, Receipt } from 'lucide-react';
+import { ArrowUpRight, Sparkles } from 'lucide-react';
 import { SettleUpModal } from '../../../shared/components/SettleUpModal';
 import { DashboardWidgets } from '../components/DashboardWidgets';
+import { BudgetWidgets } from '../components/BudgetWidgets';
 import { NetPositionSection } from '../components/NetPositionSection';
 import { CreateExpenseModal } from '../../../shared/components/CreateExpenseModal';
 
@@ -70,7 +71,6 @@ export const Dashboard = () => {
   const fmt = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
 
-  const hasActivity = (insights.topOwed?.length > 0) || (insights.topOwe?.length > 0) || recentActivity.length > 0 || metrics.totalBalance !== 0;
 
   // Don't render the main content until we have real data
   if (loading) {
@@ -109,6 +109,8 @@ export const Dashboard = () => {
             <h2 className="text-[13px] font-bold text-zinc-400 uppercase tracking-widest">Quick Insights</h2>
           </div>
           <DashboardWidgets data={{ ...metrics, ...advanced, focusInsight, topOwe: insights.topOwe }} />
+          
+          <BudgetWidgets refreshTrigger={metrics.totalBalance} />
         </div>
 
         {/* Recent Activity Section (Bottom) */}

@@ -28,6 +28,7 @@ router.post('/:id/members/:userId/approve', requireAuth, GroupController.approve
 router.post('/:id/members/:userId/reject', requireAuth, GroupController.rejectMember);
 
 router.post('/:id/settle-all', requireAuth, require('../controllers/SettlementController').SettlementController.settleAllGroupMutual);
+router.post('/:id/lock-expenses', requireAuth, GroupController.lockExpenses);
 
 router.post('/:id/nudge/:userId', requireAuth, nudgeLimiter, (req, res) => GroupController.nudgeMember(req as any, res));
 

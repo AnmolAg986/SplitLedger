@@ -12,7 +12,7 @@ export const ResetPassword = () => {
 
   const [step, setStep] = useState<Step>('otp');
   const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '']);
-  const [identifierInput, setIdentifierInput] = useState(identifier || '');
+
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);

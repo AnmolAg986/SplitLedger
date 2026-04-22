@@ -12,15 +12,19 @@ import friendRoutes from './infrastructure/http/routes/friendRoutes';
 import groupRoutes from './infrastructure/http/routes/groupRoutes';
 
 import expenseRoutes from './infrastructure/http/routes/expenseRoutes';
+import expenseTemplateRoutes from './infrastructure/http/routes/expenseTemplateRoutes';
 import settlementRoutes from './infrastructure/http/routes/settlementRoutes';
 import chatRoutes from './infrastructure/http/routes/chatRoutes';
 import uploadRoutes from './infrastructure/http/routes/uploadRoutes';
 import unreadRoutes from './infrastructure/http/routes/unreadRoutes';
 import notificationRoutes from './infrastructure/http/routes/notificationRoutes';
+import analyticsRoutes from './infrastructure/http/routes/analyticsRoutes';
+import budgetRoutes from './infrastructure/http/routes/budgetRoutes';
 import path from 'path';
 import { initSocketServer } from './infrastructure/websocket/socketServer';
 import { startReminderJob } from './infrastructure/cron/reminderJob';
 import { startRecurringExpenseJob } from './infrastructure/cron/RecurringExpenseJob';
+import { startBudgetAlertJob } from './infrastructure/cron/budgetAlertJob';
 import { globalLimiter } from './infrastructure/http/middleware/rateLimiter';
 import { requestIdMiddleware } from './infrastructure/http/middleware/requestId';
 import pinoHttp from 'pino-http';
@@ -57,11 +61,14 @@ app.use('/groups', groupRoutes);
 
 // ── Phase 4+ routes ──
 app.use('/expenses', expenseRoutes);
+app.use('/expense-templates', expenseTemplateRoutes);
 app.use('/settlements', settlementRoutes);
 app.use('/chat', chatRoutes);
 app.use('/upload', uploadRoutes);
 app.use('/unread', unreadRoutes);
 app.use('/notifications', notificationRoutes);
+app.use('/analytics', analyticsRoutes);
+app.use('/budgets', budgetRoutes);
 
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
@@ -91,6 +98,7 @@ const startServer = async () => {
     console.log(`Server listening on port ${port}`);
     startReminderJob();
     startRecurringExpenseJob();
+    startBudgetAlertJob();
   });
 };
 

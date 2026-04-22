@@ -66,7 +66,9 @@ export const FriendDetail = () => {
   // Track isChatOpen in a ref so socket callbacks always see the current value
   // without needing to re-register listeners on every open/close toggle.
   const isChatOpenRef = useRef(isChatOpen);
-  isChatOpenRef.current = isChatOpen;
+  useEffect(() => {
+    isChatOpenRef.current = isChatOpen;
+  }, [isChatOpen]);
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -109,7 +111,6 @@ export const FriendDetail = () => {
     return () => {
       if (id) emit('leave_conversation', id);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, emit]);
 
   // Mark chat as read when chat panel is opened
@@ -118,7 +119,6 @@ export const FriendDetail = () => {
       markAsRead('friend', id, 'chat');
       emit('mark_read', id);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isChatOpen, id]);
 
   useEffect(() => {
@@ -216,7 +216,7 @@ export const FriendDetail = () => {
           if (prev.some(m => m.id === response.data.id)) return prev;
           return [...prev, response.data as ChatMessage];
         });
-      } catch (err) {
+      } catch {
         toast.error('Failed to send message');
       }
     }
@@ -261,7 +261,7 @@ export const FriendDetail = () => {
           await apiClient.delete(`/expenses/${expenseId}`);
           toast.success('Expense deleted');
           refreshData();
-        } catch (err) {
+        } catch {
           toast.error('Failed to delete expense');
         }
       },
@@ -274,7 +274,7 @@ export const FriendDetail = () => {
     try {
       await apiClient.post(`/expenses/${expenseId}/remind`);
       toast.success('Reminder sent!');
-    } catch (err) {
+    } catch {
       toast.error('Failed to send reminder');
     } finally {
       setLoadingReminders(prev => ({ ...prev, [expenseId]: false }));
@@ -287,7 +287,7 @@ export const FriendDetail = () => {
       setIsEditingNickname(false);
       toast.success('Nickname updated');
       refreshData();
-    } catch (err) {
+    } catch {
       toast.error('Failed to update nickname');
     }
   };
@@ -302,7 +302,7 @@ export const FriendDetail = () => {
           await apiClient.post('/settlements/settle-all-mutual', { friendId: id });
           toast.success('Mutual balance settled!');
           refreshData();
-        } catch (err) {
+        } catch {
           toast.error('Failed to settle balance');
         }
       },
@@ -319,7 +319,7 @@ export const FriendDetail = () => {
           await apiClient.post(`/expenses/${expenseId}/settle`);
           toast.success('Expense settled!');
           refreshData();
-        } catch (err) {
+        } catch {
           toast.error('Failed to settle expense');
         }
       },
@@ -332,7 +332,7 @@ export const FriendDetail = () => {
     try {
       await apiClient.post(`/friends/${id}/nudge`, { amount: detail.balance.netBalance });
       toast.success('Reminder sent!');
-    } catch (err) {
+    } catch {
       toast.error('Failed to send reminder');
     }
   };
@@ -391,7 +391,7 @@ export const FriendDetail = () => {
                </div>
             </div>
           </div>
-         <div className="flex gap-3">
+         <div className="flex gap-3 pr-16">
            <button 
              onClick={() => { setExpenseToEdit(null); setExpenseModalOpen(true); }}
              className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-white font-medium transition-colors flex items-center gap-2"

@@ -48,6 +48,7 @@ export const ExpenseAttachments: React.FC<ExpenseAttachmentsProps> = ({ expenseI
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isExpanded) fetchAttachments();
   }, [isExpanded, expenseId]);
 

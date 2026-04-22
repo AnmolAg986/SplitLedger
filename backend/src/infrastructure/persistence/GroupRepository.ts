@@ -120,6 +120,10 @@ export class GroupRepository {
                  WHERE es.expense_id = e.id),
                 '[]'::json
               ) as participants,
+              COALESCE(
+                (SELECT json_agg(tag) FROM expense_tags et WHERE et.expense_id = e.id),
+                '[]'::json
+              ) as tags,
               CASE 
                 WHEN e.paid_by = $2 THEN
                   NOT EXISTS (SELECT 1 FROM expense_splits es2 WHERE es2.expense_id = e.id AND es2.user_id != $2 AND es2.is_paid = false)

@@ -185,7 +185,7 @@ export const Login = () => {
                 <label htmlFor="password" className="text-[12px] font-bold text-zinc-400 uppercase tracking-[0.1em]">
                   Password
                 </label>
-                <Link to="/forgot-password" size="sm" className="text-[12px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors">
+                <Link to="/forgot-password" className="text-[12px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors">
                   Forgot?
                 </Link>
               </div>
