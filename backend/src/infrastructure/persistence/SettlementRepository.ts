@@ -2,12 +2,29 @@ import { pool } from '../../config/db';
 
 export class SettlementRepository {
 
-  static async createSettlement(fromUser: string, toUser: string, amount: number, currency: string, groupId?: string | null) {
+  static async createSettlement(fromUser: string, toUser: string, amount: number, currency: string, groupId?: string | null, paymentMethod?: string, paymentRef?: string) {
     const res = await pool.query(
-      `INSERT INTO settlements (group_id, from_user, to_user, amount, currency, status)
-       VALUES ($1, $2, $3, $4, $5, 'pending')
+      `INSERT INTO settlements (group_id, from_user, to_user, amount, currency, status, payment_method, payment_ref)
+       VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)
        RETURNING *`,
-      [groupId || null, fromUser, toUser, amount, currency]
+      [groupId || null, fromUser, toUser, amount, currency, paymentMethod || 'cash', paymentRef || null]
+    );
+    return res.rows[0];
+  }
+
+  static async createRecurring(
+    fromUser: string, toUser: string, amount: number, currency: string,
+    recurringInterval: string, nextDate: string,
+    groupId?: string | null, paymentMethod?: string
+  ) {
+    const res = await pool.query(
+      `INSERT INTO settlements
+         (group_id, from_user, to_user, amount, currency, status,
+          payment_method, is_recurring, recurring_interval, next_recurring_date)
+       VALUES ($1,$2,$3,$4,$5,'pending',$6,true,$7,$8)
+       RETURNING *`,
+      [groupId || null, fromUser, toUser, amount, currency,
+       paymentMethod || 'cash', recurringInterval, nextDate]
     );
     return res.rows[0];
   }
@@ -19,6 +36,40 @@ export class SettlementRepository {
        WHERE id = $1 AND (from_user = $2 OR to_user = $2)
        RETURNING *`,
       [settlementId, userId]
+    );
+    return res.rows[0] || null;
+  }
+
+  static async disputeSettlement(settlementId: string, userId: string, note: string) {
+    const res = await pool.query(
+      `UPDATE settlements
+       SET status = 'pending_confirmation', disputed_at = now(), dispute_note = $3
+       WHERE id = $1 AND (from_user = $2 OR to_user = $2)
+         AND created_at > now() - interval '48 hours'
+       RETURNING *`,
+      [settlementId, userId, note]
+    );
+    return res.rows[0] || null;
+  }
+
+  static async resolveDispute(settlementId: string, userId: string) {
+    const res = await pool.query(
+      `UPDATE settlements
+       SET status = 'completed', disputed_at = null, dispute_note = null
+       WHERE id = $1 AND (from_user = $2 OR to_user = $2)
+       RETURNING *`,
+      [settlementId, userId]
+    );
+    return res.rows[0] || null;
+  }
+
+  static async uploadProof(settlementId: string, userId: string, proofUrl: string) {
+    const res = await pool.query(
+      `UPDATE settlements
+       SET proof_url = $3
+       WHERE id = $1 AND (from_user = $2 OR to_user = $2)
+       RETURNING *`,
+      [settlementId, userId, proofUrl]
     );
     return res.rows[0] || null;
   }
@@ -127,5 +178,27 @@ export class SettlementRepository {
     } finally {
       client.release();
     }
+  }
+
+  static async addHistory(settlementId: string, action: string, actorId: string, note?: string) {
+    const res = await pool.query(
+      `INSERT INTO settlement_history (settlement_id, action, actor_id, note)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [settlementId, action, actorId, note || null]
+    );
+    return res.rows[0];
+  }
+
+  static async getHistory(settlementId: string) {
+    const res = await pool.query(
+      `SELECT h.*, u.display_name as actor_name
+       FROM settlement_history h
+       LEFT JOIN users u ON h.actor_id = u.id
+       WHERE h.settlement_id = $1
+       ORDER BY h.created_at DESC`,
+      [settlementId]
+    );
+    return res.rows;
   }
 }

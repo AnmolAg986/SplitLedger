@@ -13,15 +13,18 @@ export class SettlementController {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-      const { toUser, amount, currency, groupId } = req.body;
+      const { toUser, amount, currency, groupId, paymentMethod, paymentRef } = req.body;
       if (!toUser || !amount) {
         return res.status(400).json({ error: 'toUser and amount are required' });
       }
 
       // Create the settlement record
       const settlement = await SettlementRepository.createSettlement(
-        userId, toUser, amount, currency || 'INR', groupId
+        userId, toUser, amount, currency || 'INR', groupId, paymentMethod, paymentRef
       );
+
+      // Log history
+      await SettlementRepository.addHistory(settlement.id, 'created', userId, 'Settlement initiated');
 
       // Mark the relevant expense splits as paid in both directions for a mutual settlement
       await SettlementRepository.settleUpBetween(userId, toUser);
@@ -54,6 +57,33 @@ export class SettlementController {
       return res.status(201).json(settlement);
     } catch (err) {
       console.error('[SettlementController] createSettlement error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async createRecurring(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const { toUser, amount, currency, groupId, recurringInterval, nextDate, paymentMethod } = req.body;
+      if (!toUser || !amount || !recurringInterval || !nextDate) {
+        return res.status(400).json({ error: 'toUser, amount, recurringInterval and nextDate are required' });
+      }
+
+      const settlement = await SettlementRepository.createRecurring(
+        userId, toUser, amount, currency || 'INR',
+        recurringInterval, nextDate, groupId, paymentMethod
+      );
+
+      await SettlementRepository.addHistory(
+        settlement.id, 'created', userId,
+        `Recurring settlement setup (${recurringInterval}) — first due ${nextDate}`
+      );
+
+      return res.status(201).json(settlement);
+    } catch (err) {
+      console.error('[SettlementController] createRecurring error:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -110,9 +140,65 @@ export class SettlementController {
       const settlement = await SettlementRepository.markSettled(id, userId);
       if (!settlement) return res.status(404).json({ error: 'Settlement not found' });
 
+      // Log history
+      await SettlementRepository.addHistory(id, 'confirmed', userId, 'Settlement marked as completed');
+
       return res.status(200).json(settlement);
     } catch (err) {
       console.error('[SettlementController] markSettled error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async disputeSettlement(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const id = req.params.id as string;
+      const { note } = req.body;
+      
+      const settlement = await SettlementRepository.disputeSettlement(id, userId, note);
+      if (!settlement) return res.status(400).json({ error: 'Settlement cannot be disputed or not found' });
+
+      await SettlementRepository.addHistory(id, 'disputed', userId, note);
+
+      const targetUser = settlement.from_user === userId ? settlement.to_user : settlement.from_user;
+      
+      try {
+        await NotificationSys.notify(
+          targetUser,
+          'settled',
+          'Settlement Disputed',
+          `A settlement was disputed. Note: ${note}`,
+          'settlement',
+          settlement.id
+        );
+      } catch (e) {
+        console.error('Failed to notify about dispute:', e);
+      }
+
+      return res.status(200).json(settlement);
+    } catch (err) {
+      console.error('[SettlementController] disputeSettlement error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async resolveDispute(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const id = req.params.id as string;
+      const settlement = await SettlementRepository.resolveDispute(id, userId);
+      if (!settlement) return res.status(404).json({ error: 'Settlement not found' });
+
+      await SettlementRepository.addHistory(id, 'resolved', userId, 'Dispute resolved and confirmed');
+
+      return res.status(200).json(settlement);
+    } catch (err) {
+      console.error('[SettlementController] resolveDispute error:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -154,6 +240,44 @@ export class SettlementController {
       return res.status(200).json({ message: 'All outstanding group debts settled successfully' });
     } catch (err) {
       console.error('[SettlementController] settleAllGroupMutual error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async getHistory(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const id = req.params.id as string;
+      const history = await SettlementRepository.getHistory(id);
+
+      return res.status(200).json(history);
+    } catch (err) {
+      console.error('[SettlementController] getHistory error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async uploadProof(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const id = req.params.id as string;
+      const file = req.file;
+      
+      if (!file) return res.status(400).json({ error: 'No image provided' });
+
+      const proofUrl = `/uploads/${file.filename}`;
+      const settlement = await SettlementRepository.uploadProof(id, userId, proofUrl);
+
+      if (!settlement) return res.status(404).json({ error: 'Settlement not found' });
+      await SettlementRepository.addHistory(id, 'proof_uploaded', userId, 'Payment proof uploaded');
+
+      return res.status(200).json(settlement);
+    } catch (err) {
+      console.error('[SettlementController] uploadProof error:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }

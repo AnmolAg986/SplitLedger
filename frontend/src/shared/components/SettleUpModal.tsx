@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiClient } from '../api/axios';
-import { X, CheckCircle2, Loader2, Banknote } from 'lucide-react';
+import { X, CheckCircle2, Loader2, Banknote, Upload, Image as ImageIcon } from 'lucide-react';
+import { toast } from '../store/useToastStore';
 
 interface SettleUpModalProps {
   isOpen: boolean;
@@ -18,6 +19,13 @@ export const SettleUpModal = ({ isOpen, onClose, onSuccess }: SettleUpModalProps
   const [loading, setLoading] = useState(true);
   const [oweList, setOweList] = useState<OweItem[]>([]);
   const [settling, setSettling] = useState<string | null>(null);
+  
+  const [paymentMethod, setPaymentMethod] = useState('upi');
+  const [paymentRef, setPaymentRef] = useState('');
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringInterval, setRecurringInterval] = useState('monthly');
+  const [nextDate, setNextDate] = useState('');
 
   const fetchBalances = async () => {
     setLoading(true);
@@ -41,12 +49,41 @@ export const SettleUpModal = ({ isOpen, onClose, onSuccess }: SettleUpModalProps
   const handleSettle = async (friendId: string, amount: number) => {
     setSettling(friendId);
     try {
-      await apiClient.post('/settlements', {
-        toUser: friendId,
-        amount: amount,
-        currency: 'INR'
-      });
+      let res;
+      if (isRecurring) {
+        res = await apiClient.post('/settlements/recurring', {
+          toUser: friendId,
+          amount,
+          currency: 'INR',
+          paymentMethod,
+          recurringInterval,
+          nextDate
+        });
+      } else {
+        res = await apiClient.post('/settlements', {
+          toUser: friendId,
+          amount,
+          currency: 'INR',
+          paymentMethod,
+          paymentRef: paymentRef || undefined
+        });
+
+        if (proofFile) {
+          const formData = new FormData();
+          formData.append('proof', proofFile);
+          try {
+            await apiClient.post(`/settlements/${res.data.id}/proof`, formData, {
+              headers: { 'Content-Type': 'multipart/form-data' }
+            });
+          } catch (err) {
+            toast.error('Payment recorded, but proof upload failed');
+          }
+        }
+      }
+
       setOweList(prev => prev.filter(item => item.user_id !== friendId));
+      setProofFile(null);
+      setPaymentRef('');
       if (onSuccess) onSuccess();
     } catch (err) {
       console.error('Settlement failed:', err);
@@ -109,6 +146,85 @@ export const SettleUpModal = ({ isOpen, onClose, onSuccess }: SettleUpModalProps
                       <div className="text-rose-400 text-sm font-black">₹{person.amount}</div>
                     </div>
                   </div>
+                  
+                  <div className="flex flex-col gap-2 w-full max-w-[200px]">
+                    <select 
+                      value={paymentMethod} 
+                      onChange={e => setPaymentMethod(e.target.value)}
+                      className="w-full bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                    >
+                      <option value="upi">UPI</option>
+                      <option value="cash">Cash</option>
+                      <option value="bank">Bank Transfer</option>
+                      <option value="other">Other</option>
+                    </select>
+                    {paymentMethod !== 'cash' && (
+                      <input 
+                        type="text" 
+                        value={paymentRef} 
+                        onChange={e => setPaymentRef(e.target.value)}
+                        placeholder="Ref ID (optional)"
+                        className="w-full bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 transition-colors"
+                      />
+                    )}
+                    <label className="flex items-center justify-center gap-2 w-full border border-dashed border-white/20 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-white/5 transition-colors group/upload">
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        accept="image/*" 
+                        onChange={e => {
+                          if (e.target.files && e.target.files[0]) {
+                            if (e.target.files[0].size > 5 * 1024 * 1024) {
+                              toast.error('File too large (max 5MB)');
+                              return;
+                            }
+                            setProofFile(e.target.files[0]);
+                          }
+                        }} 
+                      />
+                      {proofFile ? (
+                        <>
+                          <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-[10px] text-emerald-400 font-bold truncate max-w-[120px]">{proofFile.name}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-3.5 h-3.5 text-zinc-500 group-hover/upload:text-white transition-colors" />
+                          <span className="text-[10px] text-zinc-500 group-hover/upload:text-white font-medium transition-colors">Attach Proof (opt)</span>
+                        </>
+                      )}
+                    </label>
+                    {/* Recurring toggle */}
+                    <label className="flex items-center gap-2 cursor-pointer select-none mt-1">
+                      <div
+                        onClick={() => setIsRecurring(r => !r)}
+                        className={`w-8 h-4 rounded-full transition-colors relative ${isRecurring ? 'bg-emerald-500' : 'bg-white/10'}`}
+                      >
+                        <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${isRecurring ? 'translate-x-4' : ''}`} />
+                      </div>
+                      <span className="text-[10px] text-zinc-400 font-medium">Recurring</span>
+                    </label>
+                    {isRecurring && (
+                      <>
+                        <select
+                          value={recurringInterval}
+                          onChange={e => setRecurringInterval(e.target.value)}
+                          className="w-full bg-black/20 border border-emerald-500/30 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none transition-colors"
+                        >
+                          <option value="weekly">Weekly</option>
+                          <option value="monthly">Monthly</option>
+                          <option value="yearly">Yearly</option>
+                        </select>
+                        <input
+                          type="date"
+                          value={nextDate}
+                          onChange={e => setNextDate(e.target.value)}
+                          className="w-full bg-black/20 border border-emerald-500/30 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none transition-colors"
+                        />
+                      </>
+                    )}
+                  </div>
+
                   <button
                     onClick={() => handleSettle(person.user_id, person.amount)}
                     disabled={settling === person.user_id}
