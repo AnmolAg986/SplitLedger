@@ -53,10 +53,11 @@ export class ChatController {
       if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
       const friendId = req.params.friendId as string;
-      const { content } = req.body;
+      const { content, replyToId, attachmentUrl, attachmentType } = req.body;
 
-      if (!content || content.trim().length === 0) {
-        return res.status(400).json({ error: 'Message content is required' });
+      // Allow empty content if there's an attachment
+      if ((!content || content.trim().length === 0) && !attachmentUrl) {
+        return res.status(400).json({ error: 'Message content or attachment is required' });
       }
 
       const isBlocked = await BlockRepository.isBlocked(userId, friendId);
@@ -64,7 +65,7 @@ export class ChatController {
         return res.status(403).json({ error: 'You cannot send messages to this user' });
       }
 
-      const message = await ChatRepository.sendMessage(userId, friendId, content.trim());
+      const message = await ChatRepository.sendMessage(userId, friendId, content ? content.trim() : '', replyToId, attachmentUrl, attachmentType);
 
       // Emit via Socket.IO if available
       const io = req.app.get('io');

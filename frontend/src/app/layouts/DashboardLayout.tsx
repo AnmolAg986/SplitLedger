@@ -14,12 +14,14 @@ export const DashboardLayout = () => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(true);
-  const { on } = useSocket();
+  const { on, isConnected } = useSocket();
   const { fetchCounts, handleUpdate, getPageCount, getTotalActivityCount } = useUnreadStore();
 
   React.useEffect(() => {
-    fetchCounts();
-  }, [fetchCounts]);
+    if (isConnected) {
+      fetchCounts();
+    }
+  }, [isConnected, fetchCounts]);
 
   React.useEffect(() => {
     const unsub = on('notification', (data: any) => {

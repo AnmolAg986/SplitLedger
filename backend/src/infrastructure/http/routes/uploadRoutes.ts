@@ -21,7 +21,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const uploadImage = multer({ 
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) => {
@@ -33,8 +33,21 @@ const upload = multer({
   }
 });
 
+const uploadVoice = multer({ 
+  storage: storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('audio/') || file.mimetype.startsWith('video/webm')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only audio files are allowed'));
+    }
+  }
+});
+
 const router = Router();
 
-router.post('/image', requireAuth, upload.single('image'), UploadController.uploadImage);
+router.post('/image', requireAuth, uploadImage.single('image'), UploadController.uploadImage);
+router.post('/voice', requireAuth, uploadVoice.single('voice'), UploadController.uploadVoice);
 
 export default router;

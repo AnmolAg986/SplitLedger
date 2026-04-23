@@ -8,6 +8,7 @@ export const useSocket = () => {
   const { accessToken } = useAuthStore();
   const [isConnected, setIsConnected] = useState(socketInstance?.connected || false);
   const listenersRef = useRef(new Map<string, ((...args: unknown[]) => void)[]>());
+  const messageQueueRef = useRef<{ event: string; args: unknown[] }[]>([]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -24,9 +25,22 @@ export const useSocket = () => {
       socketInstance = io('http://localhost:3000', {
         auth: { token: accessToken },
         transports: ['websocket'],
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 10,
       });
 
-      socketInstance.on('connect', () => setIsConnected(true));
+      socketInstance.on('connect', () => {
+        setIsConnected(true);
+        // Flush any queued messages
+        if (messageQueueRef.current.length > 0) {
+          console.log(`[Socket] Flushing ${messageQueueRef.current.length} queued messages`);
+          messageQueueRef.current.forEach(({ event, args }) => {
+            socketInstance?.emit(event, ...args);
+          });
+          messageQueueRef.current = [];
+        }
+      });
       socketInstance.on('disconnect', () => setIsConnected(false));
       socketInstance.on('error', (err) => console.error('Socket error:', err));
     }
@@ -58,7 +72,8 @@ export const useSocket = () => {
     if (socketInstance && socketInstance.connected) {
       socketInstance.emit(event, ...args);
     } else {
-      console.warn('Socket not connected, cannot emit:', event);
+      console.log(`[Socket] Queueing offline message: ${event}`);
+      messageQueueRef.current.push({ event, args });
     }
   }, []);
 

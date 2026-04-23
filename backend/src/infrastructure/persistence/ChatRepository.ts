@@ -1,14 +1,18 @@
 import { pool } from '../../config/db';
 import { UnreadRepository } from './UnreadRepository';
+import { ReactionRepository } from './ReactionRepository';
+import { LinkPreviewService } from '../services/LinkPreviewService';
 
 export class ChatRepository {
 
-  static async sendMessage(senderId: string, receiverId: string, content: string) {
+  static async sendMessage(senderId: string, receiverId: string, content: string, replyToId?: string, attachmentUrl?: string, attachmentType?: string) {
+    const linkPreviewId = await LinkPreviewService.getOrCreatePreview(content);
+    
     const res = await pool.query(
-      `INSERT INTO direct_messages (sender_id, receiver_id, content)
-       VALUES ($1, $2, $3)
+      `INSERT INTO direct_messages (sender_id, receiver_id, content, reply_to_id, link_preview_id, attachment_url, attachment_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [senderId, receiverId, content]
+      [senderId, receiverId, content, replyToId || null, linkPreviewId, attachmentUrl || null, attachmentType || null]
     );
     await UnreadRepository.increment(receiverId, 'friend', senderId, 'chat');
     return res.rows[0];
@@ -16,10 +20,26 @@ export class ChatRepository {
 
   static async getConversation(userId1: string, userId2: string, limit = 50, offset = 0) {
     const res = await pool.query(
-      `SELECT dm.*, s.display_name as sender_name, r.display_name as receiver_name
+      `SELECT dm.*,
+              s.display_name as sender_name,
+              r.display_name as receiver_name,
+              rt.content as reply_to_content,
+              rts.display_name as reply_to_sender_name,
+              CASE WHEN lp.id IS NOT NULL THEN
+                json_build_object(
+                  'url', lp.url,
+                  'title', lp.title,
+                  'description', lp.description,
+                  'image_url', lp.image_url,
+                  'site_name', lp.site_name
+                )
+              ELSE NULL END as link_preview
        FROM direct_messages dm
        JOIN users s ON dm.sender_id = s.id
        JOIN users r ON dm.receiver_id = r.id
+       LEFT JOIN direct_messages rt ON dm.reply_to_id = rt.id
+       LEFT JOIN users rts ON rt.sender_id = rts.id
+       LEFT JOIN message_link_previews lp ON dm.link_preview_id = lp.id
        WHERE ((dm.sender_id = $1 AND dm.receiver_id = $2)
           OR (dm.sender_id = $2 AND dm.receiver_id = $1))
          AND NOT ($1 = ANY(dm.deleted_for_users))
@@ -27,8 +47,9 @@ export class ChatRepository {
        LIMIT $3 OFFSET $4`,
       [userId1, userId2, limit, offset]
     );
-    // Return in chronological order
-    return res.rows.reverse();
+    // Return in chronological order with reactions attached
+    const msgs = res.rows.reverse();
+    return ReactionRepository.attachToMessages(msgs, 'dm');
   }
 
   static async editMessage(messageId: string, senderId: string, content: string) {
@@ -95,17 +116,19 @@ export class ChatRepository {
   }
 
   // --- Group Messages ---
-  static async sendGroupMessage(groupId: string, senderId: string, content: string) {
+  static async sendGroupMessage(groupId: string, senderId: string, content: string, replyToId?: string, attachmentUrl?: string, attachmentType?: string) {
+    const linkPreviewId = await LinkPreviewService.getOrCreatePreview(content);
+
     const res = await pool.query(
       `WITH ins AS (
-         INSERT INTO group_messages (group_id, sender_id, content)
-         VALUES ($1, $2, $3)
+         INSERT INTO group_messages (group_id, sender_id, content, reply_to_id, link_preview_id, attachment_url, attachment_type)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *
        )
        SELECT ins.*, u.display_name AS sender_name
        FROM ins
        JOIN users u ON ins.sender_id = u.id`,
-      [groupId, senderId, content]
+      [groupId, senderId, content, replyToId || null, linkPreviewId, attachmentUrl || null, attachmentType || null]
     );
     const membersRes = await pool.query(`SELECT user_id FROM group_members WHERE group_id = $1 AND user_id != $2`, [groupId, senderId]);
     for (const member of membersRes.rows) {
@@ -116,15 +139,31 @@ export class ChatRepository {
 
   static async getGroupConversation(groupId: string, userId: string, limit = 50, offset = 0) {
     const res = await pool.query(
-      `SELECT gm.*, s.display_name as sender_name
+      `SELECT gm.*,
+              s.display_name as sender_name,
+              rt.content as reply_to_content,
+              rts.display_name as reply_to_sender_name,
+              CASE WHEN lp.id IS NOT NULL THEN
+                json_build_object(
+                  'url', lp.url,
+                  'title', lp.title,
+                  'description', lp.description,
+                  'image_url', lp.image_url,
+                  'site_name', lp.site_name
+                )
+              ELSE NULL END as link_preview
        FROM group_messages gm
        JOIN users s ON gm.sender_id = s.id
+       LEFT JOIN group_messages rt ON gm.reply_to_id = rt.id
+       LEFT JOIN users rts ON rt.sender_id = rts.id
+       LEFT JOIN message_link_previews lp ON gm.link_preview_id = lp.id
        WHERE gm.group_id = $1 AND NOT ($2 = ANY(gm.deleted_for_users))
        ORDER BY gm.created_at DESC
        LIMIT $3 OFFSET $4`,
       [groupId, userId, limit, offset]
     );
-    return res.rows.reverse();
+    const msgs = res.rows.reverse();
+    return ReactionRepository.attachToMessages(msgs, 'group');
   }
 
   static async editGroupMessage(messageId: string, senderId: string, content: string) {

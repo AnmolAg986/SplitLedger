@@ -7,11 +7,17 @@ import { ExpenseAttachments } from '../../expenses/components/ExpenseAttachments
 import { useSocket } from '../../../shared/hooks/useSocket';
 import { useAuthStore } from '../../../app/store/useAuthStore';
 import { useSettingsStore } from '../../../shared/store/useSettingsStore';
-import { ArrowLeft, Send, Receipt, Banknote, Edit2, Trash2, Bell, Loader2, MessageSquare, X, Check, CheckCheck, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Send, Receipt, Banknote, Edit2, Trash2, Bell, Loader2, MessageSquare, X, Check, CheckCheck, MoreVertical, CornerUpLeft } from 'lucide-react';
 import { ExpenseModal } from '../../expenses/components/ExpenseModal';
 import { ConfirmModal } from '../../../shared/components/ConfirmModal';
 import { ExpenseCharts } from '../../groups/components/ExpenseCharts';
 import { useUnreadStore } from '../../../shared/store/useUnreadStore';
+import { MessageReactions } from '../../../shared/components/MessageReactions';
+import { ReplyQuote } from '../../../shared/components/ReplyQuote';
+import { LinkPreview } from '../../../shared/components/LinkPreview';
+import { VoiceRecorder } from '../../../shared/components/VoiceRecorder';
+import { VoiceMessage } from '../../../shared/components/VoiceMessage';
+import { Mic } from 'lucide-react';
 
 interface FriendExpense {
   id: string;
@@ -25,7 +31,7 @@ interface FriendExpense {
 }
 
 interface FriendDetailData {
-  friend: { id: string; display_name: string; nickname?: string; category?: string };
+  friend: { id: string; display_name: string; nickname?: string; category?: string; avatar_url?: string };
   balance: { netBalance: number; totalOwed: number; totalOwe: number };
   expenses: FriendExpense[];
   mutualGroups: { id: string; name: string }[];
@@ -46,7 +52,7 @@ interface ChatMessage {
 export const FriendDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { emit, on } = useSocket();
+  const { emit, on, isConnected } = useSocket();
   const currentUser = useAuthStore(s => s.user);
   const { getSectionCount, markAsRead } = useUnreadStore();
   const [detail, setDetail] = useState<FriendDetailData | null>(null);
@@ -67,6 +73,10 @@ export const FriendDetail = () => {
   const [isEditingNickname, setIsEditingNickname] = useState(false);
   const [nicknameInput, setNicknameInput] = useState('');
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [presence, setPresence] = useState<{ online: boolean; lastSeen: string | null }>({ online: false, lastSeen: null });
+  const [replyingTo, setReplyingTo] = useState<{ id: string; content: string; senderName: string } | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   // Track isChatOpen in a ref so socket callbacks always see the current value
   // without needing to re-register listeners on every open/close toggle.
@@ -95,16 +105,18 @@ export const FriendDetail = () => {
   };
 
   useEffect(() => {
-    if (id) {
+    if (id && isConnected) {
       Promise.all([
         apiClient.get(`/friends/${id}`),
-        apiClient.get(`/chat/${id}`)
-      ]).then(([detailRes, chatRes]) => {
+        apiClient.get(`/chat/${id}`),
+        apiClient.get(`/users/${id}/presence`)
+      ]).then(([detailRes, chatRes, presenceRes]) => {
         setDetail({
           ...detailRes.data,
           expenses: detailRes.data.expenses?.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         });
         setChat(chatRes.data);
+        setPresence(presenceRes.data);
         setNicknameInput(detailRes.data.friend.nickname || '');
       }).catch(console.error);
 
@@ -114,9 +126,9 @@ export const FriendDetail = () => {
       markAsRead('friend', id, 'payments');
     }
     return () => {
-      if (id) emit('leave_conversation', id);
+      if (id && isConnected) emit('leave_conversation', id);
     };
-  }, [id, emit]);
+  }, [id, emit, isConnected]);
 
   // Mark chat as read when chat panel is opened
   useEffect(() => {
@@ -141,6 +153,11 @@ export const FriendDetail = () => {
     });
     const unsub2 = on('user_typing', () => setIsTyping(true));
     const unsub3 = on('user_stop_typing', () => setIsTyping(false));
+    const unsub10 = on('user_presence_change', (data: any) => {
+      if (data.userId === id) {
+        setPresence({ online: data.online, lastSeen: data.lastSeen });
+      }
+    });
     
     // Merge (not replace) so fields present in local state but absent in the
     // raw DB row (e.g. sender_name) are preserved.
@@ -166,6 +183,9 @@ export const FriendDetail = () => {
     const unsub9 = on('error', (err: any) => {
       toast.error(err.message || 'An error occurred');
     });
+    const unsub11 = on('message_reaction_update', (data: any) => {
+      setChat(prev => prev.map(m => m.id === data.messageId ? { ...m, reactions: data.reactions } : m));
+    });
     
     return () => {
       if (unsub1) unsub1(); 
@@ -177,6 +197,8 @@ export const FriendDetail = () => {
       if (unsub7) unsub7(); 
       if (unsub8) unsub8(); 
       if (unsub9) unsub9();
+      if (unsub10) unsub10();
+      if (unsub11) unsub11();
     };
   }, [on, emit, id]);
 
@@ -190,7 +212,11 @@ export const FriendDetail = () => {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
       emit('stop_typing', id);
-    }, 1500);
+    }, 3000);
+  };
+
+  const handleReactDM = (messageId: string, emoji: string) => {
+    emit('react_message', { messageId, messageType: 'dm', emoji, friendId: id });
   };
 
   const handleSend = async (e: React.FormEvent) => {
@@ -216,16 +242,47 @@ export const FriendDetail = () => {
       try {
         const trimmed = msgInput.trim();
         setMsgInput('');
-        const response = await apiClient.post(`/chat/${id}`, { content: trimmed });
+        const response = await apiClient.post(`/chat/${id}`, { content: trimmed, replyToId: replyingTo?.id });
         setChat(prev => {
           if (prev.some(m => m.id === response.data.id)) return prev;
           return [...prev, response.data as ChatMessage];
         });
+        setReplyingTo(null);
       } catch {
         toast.error('Failed to send message');
       }
     }
   };
+
+  const handleVoiceSend = async (blob: Blob) => {
+    setIsRecording(false);
+    try {
+      const formData = new FormData();
+      formData.append('voice', blob, 'voice.webm');
+      const response = await apiClient.post('/upload/voice', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const attachmentUrl = response.data.url;
+      const attachmentType = response.data.type;
+      
+      const chatResponse = await apiClient.post(`/chat/${id}`, { content: '', replyToId: replyingTo?.id, attachmentUrl, attachmentType });
+      setChat(prev => {
+        if (prev.some(m => m.id === chatResponse.data.id)) return prev;
+        return [...prev, chatResponse.data as ChatMessage];
+      });
+      setReplyingTo(null);
+    } catch (err) {
+      toast.error('Failed to send voice note');
+    }
+  };
+
+  const startReply = (msg: any) => {
+    setReplyingTo({ id: msg.id, content: msg.content, senderName: msg.sender_name || 'Them' });
+    setActiveMenuId(null);
+    setEditingMessageId(null);
+  };
+
+  const cancelReply = () => setReplyingTo(null);
 
   const startEdit = (msg: ChatMessage) => {
     setEditingMessageId(msg.id);
@@ -369,6 +426,22 @@ export const FriendDetail = () => {
     }
   };
 
+  const formatLastSeen = (isoString: string | null) => {
+    if (!isoString) return 'Never';
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'Yesterday';
+    return `${diffDays}d ago`;
+  };
+
   if (!detail) return <div className="p-8 text-white">Loading...</div>;
 
   return (
@@ -396,6 +469,18 @@ export const FriendDetail = () => {
                    />
                  ) : (
                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                     <div className="relative">
+                       {detail.friend.avatar_url ? (
+                         <img src={`http://localhost:3000${detail.friend.avatar_url}`} alt="" className="w-8 h-8 rounded-full object-cover" />
+                       ) : (
+                         <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center text-sm">
+                           {detail.friend.display_name.charAt(0).toUpperCase()}
+                         </div>
+                       )}
+                       {presence.online && (
+                         <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-[#0c0c0e] rounded-full shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                       )}
+                     </div>
                      {detail.friend.nickname || detail.friend.display_name}
                      <button onClick={() => setIsEditingNickname(true)} className="p-1 hover:bg-white/10 rounded transition-colors">
                        <Edit2 className="w-3.5 h-3.5 text-zinc-500" />
@@ -405,8 +490,12 @@ export const FriendDetail = () => {
                </div>
                
                <div className="flex items-center gap-3">
+                 <span className="text-[11px] text-zinc-500 font-medium">
+                   {presence.online ? 'Online' : `Last seen ${formatLastSeen(presence.lastSeen)}`}
+                 </span>
+                 
                  {detail.friend.nickname && (
-                   <span className="text-[11px] text-zinc-500 font-medium">{detail.friend.display_name}</span>
+                   <span className="text-[11px] text-zinc-500 font-medium ml-2 border-l border-white/10 pl-2">{detail.friend.display_name}</span>
                  )}
                  <div className={`flex items-center ${detail.friend.nickname ? 'ml-2 border-l border-white/10 pl-2' : ''}`}>
                    <select 
@@ -643,14 +732,26 @@ export const FriendDetail = () => {
                    const isDeleted = msg.is_deleted_for_everyone;
                    
                    return (
-                     <div key={msg.id} className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'} group/msg`}>
-                       <div className={`px-4 py-2.5 rounded-2xl max-w-[80%] text-[14px] flex flex-col relative ${isDeleted ? 'bg-white/5 border border-white/10 text-zinc-500 italic' : isMe ? 'bg-amber-500 text-black rounded-br-sm font-medium shadow-md shadow-amber-500/10' : 'bg-white/10 text-white rounded-bl-sm border border-white/10'}`}>
-                         
+                      <div id={`msg-${msg.id}`} key={msg.id} className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'} group/msg transition-all duration-300`}>
+                        <div className={`px-4 py-2.5 rounded-2xl max-w-[80%] text-[14px] flex flex-col relative ${isDeleted ? 'bg-white/5 border border-white/10 text-zinc-500 italic' : isMe ? 'bg-amber-500 text-black rounded-br-sm font-medium shadow-md shadow-amber-500/10' : 'bg-white/10 text-white rounded-bl-sm border border-white/10'}`}>
+                          
+                          {!isDeleted && msg.reply_to_content && (
+                            <ReplyQuote
+                              senderName={msg.reply_to_sender_name || 'Unknown'}
+                              content={msg.reply_to_content}
+                              messageId={msg.reply_to_id}
+                              compact
+                            />
+                          )}       
                          {isDeleted ? (
                             <span className="flex items-center gap-1.5"><Trash2 className="w-3.5 h-3.5 opacity-50" /> This message was deleted</span>
                          ) : (
                             <div className="flex flex-col">
-                              <span>{msg.content}</span>
+                              {msg.attachment_type === 'voice' && msg.attachment_url ? (
+                                <VoiceMessage url={msg.attachment_url} />
+                              ) : (
+                                <span>{msg.content}</span>
+                              )}
                               <div className="flex justify-end items-center gap-1 mt-1 -mb-1 opacity-70">
                                 {msg.is_edited && <span className="text-[9px] font-bold tracking-widest uppercase mr-1">Edited</span>}
                                 <span className="text-[9px]">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
@@ -661,6 +762,12 @@ export const FriendDetail = () => {
                                 )}
                               </div>
                             </div>
+                         )}
+
+                         {!isDeleted && msg.link_preview && msg.link_preview.url && (
+                           <div className="mt-1 w-full max-w-sm">
+                             <LinkPreview preview={msg.link_preview} />
+                           </div>
                          )}
 
                          {/* Context Menu Toggle */}
@@ -676,15 +783,26 @@ export const FriendDetail = () => {
                          {/* Context Menu Dropdown */}
                          {activeMenuId === msg.id && (
                            <div className="absolute top-10 -left-32 w-36 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl py-1 z-50 animate-in fade-in zoom-in duration-200">
-                             <button onClick={() => startEdit(msg)} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"><Edit2 className="w-3.5 h-3.5" /> Edit</button>
+                             {isMe && <button onClick={() => startEdit(msg)} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"><Edit2 className="w-3.5 h-3.5" /> Edit</button>}
+                             <button onClick={() => startReply(msg)} className="w-full text-left px-4 py-2 text-sm text-amber-400 hover:bg-white/10 flex items-center gap-2"><CornerUpLeft className="w-3.5 h-3.5" /> Reply</button>
                              <button onClick={() => deleteMessage(msg.id, false)} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"><Trash2 className="w-3.5 h-3.5" /> Delete for me</button>
                              <button onClick={() => deleteMessage(msg.id, true)} className="w-full text-left px-4 py-2 text-sm text-rose-400 hover:bg-white/10 flex items-center gap-2"><Trash2 className="w-3.5 h-3.5" /> Delete for everyone</button>
                            </div>
                          )}
-                       </div>
-                     </div>
-                   );
-                 })
+                        </div>
+                        {!isDeleted && (
+                          <MessageReactions
+                            messageId={msg.id}
+                            messageType="dm"
+                            reactions={msg.reactions || []}
+                            currentUserId={currentUser?.id || ''}
+                            onReact={handleReactDM}
+                            isMe={isMe}
+                          />
+                        )}
+                      </div>
+                    );
+                  })
                )}
                {isTyping && (
                  <div className="flex items-center gap-2 mt-2">
@@ -700,25 +818,46 @@ export const FriendDetail = () => {
              </div>
 
              <div className="p-4 border-t border-white/10 bg-black/30 backdrop-blur-sm z-10">
-               <form onSubmit={handleSend} className="relative flex items-center">
-                 <input
-                   type="text"
-                   value={msgInput}
-                   onChange={e => handleInput(e.target.value)}
-                   className="w-full bg-white/5 border border-white/10 rounded-full pl-5 pr-14 py-3 text-sm text-white focus:outline-none focus:border-amber-500/50 transition-colors shadow-inner"
-                   placeholder={editingMessageId ? "Edit message..." : "Type a message..."}
-                 />
-                 <div className="absolute right-2 flex items-center gap-1">
-                   {editingMessageId && (
-                     <button type="button" onClick={() => { setEditingMessageId(null); setMsgInput(''); }} className="p-1.5 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors">
-                       <X className="w-4 h-4" />
-                     </button>
-                   )}
-                   <button type="submit" disabled={!msgInput.trim()} className="p-1.5 bg-amber-500 text-black rounded-full disabled:opacity-50 hover:bg-amber-400 transition-colors">
-                     <Send className="w-4 h-4 ml-[2px]" />
+               {replyingTo && (
+                 <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                   <CornerUpLeft className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                   <div className="flex-1 min-w-0">
+                     <span className="text-[10px] font-bold text-amber-400">{replyingTo.senderName}</span>
+                     <p className="text-[11px] text-zinc-400 truncate">{replyingTo.content}</p>
+                   </div>
+                   <button onClick={cancelReply} className="p-1 text-zinc-500 hover:text-white transition-colors">
+                     <X className="w-3.5 h-3.5" />
                    </button>
                  </div>
-               </form>
+               )}
+               {isRecording ? (
+                 <VoiceRecorder onSend={handleVoiceSend} onCancel={() => setIsRecording(false)} />
+               ) : (
+                 <form onSubmit={handleSend} className="relative flex items-center w-full">
+                   <input
+                     type="text"
+                     value={msgInput}
+                     onChange={e => handleInput(e.target.value)}
+                     className="w-full bg-white/5 border border-white/10 rounded-full pl-5 pr-24 py-3 text-sm text-white focus:outline-none focus:border-amber-500/50 transition-colors shadow-inner"
+                     placeholder={editingMessageId ? "Edit message..." : "Type a message..."}
+                   />
+                   <div className="absolute right-2 flex items-center gap-1">
+                     {!editingMessageId && !msgInput.trim() && (
+                       <button type="button" onClick={() => setIsRecording(true)} className="p-1.5 text-zinc-400 hover:text-white rounded-full transition-colors">
+                         <Mic className="w-4 h-4" />
+                       </button>
+                     )}
+                     {editingMessageId && (
+                       <button type="button" onClick={() => { setEditingMessageId(null); setMsgInput(''); }} className="p-1.5 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors">
+                         <X className="w-4 h-4" />
+                       </button>
+                     )}
+                     <button type="submit" disabled={!msgInput.trim()} className="p-1.5 bg-amber-500 text-black rounded-full disabled:opacity-50 hover:bg-amber-400 transition-colors">
+                       <Send className="w-4 h-4 ml-[2px]" />
+                     </button>
+                   </div>
+                 </form>
+               )}
              </div>
            </div>
          )}

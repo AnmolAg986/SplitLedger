@@ -2,8 +2,12 @@ import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { verifyAccessToken } from '../../shared/utils/jwt';
 import { ChatRepository } from '../persistence/ChatRepository';
+import { UserRepository } from '../persistence/UserRepository';
+import { FriendRepository } from '../persistence/FriendRepository';
+import { ReactionRepository } from '../persistence/ReactionRepository';
 
 export let ioInstance: Server | null = null;
+export const onlineUsers = new Map<string, { socketId: string; lastSeen: Date }>();
 
 export function initSocketServer(httpServer: HttpServer) {
   const io = new Server(httpServer, {
@@ -29,9 +33,25 @@ export function initSocketServer(httpServer: HttpServer) {
     }
   });
 
-  io.on('connection', (socket: Socket) => {
+  io.on('connection', async (socket: Socket) => {
     const userId = (socket as any).userId as string;
     console.log(`[Socket.IO] User connected: ${userId}`);
+
+    // Fetch displayName once for this socket session
+    let displayName = 'Someone';
+    try {
+      const user = await UserRepository.findById(userId);
+      if (user) displayName = user.displayName;
+    } catch { /* non-fatal */ }
+
+    // Per group typing debounce timers
+    const groupTypingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+    // Track presence
+    onlineUsers.set(userId, { socketId: socket.id, lastSeen: new Date() });
+    
+    // Announce online status to friends (could be optimized)
+    socket.broadcast.emit('user_presence_change', { userId, online: true, lastSeen: new Date() });
 
     // Join personal room for direct notifications
     socket.join(userId);
@@ -50,9 +70,9 @@ export function initSocketServer(httpServer: HttpServer) {
     });
 
     // Send a direct message
-    socket.on('send_message', async (data: { friendId: string; content: string }) => {
+    socket.on('send_message', async (data: { friendId: string; content: string; replyToId?: string; attachmentUrl?: string; attachmentType?: string }) => {
       try {
-        const message = await ChatRepository.sendMessage(userId, data.friendId, data.content.trim());
+        const message = await ChatRepository.sendMessage(userId, data.friendId, data.content ? data.content.trim() : '', data.replyToId, data.attachmentUrl, data.attachmentType);
         const roomId = [userId, data.friendId].sort().join('_');
 
         // Broadcast to the conversation room
@@ -115,17 +135,29 @@ export function initSocketServer(httpServer: HttpServer) {
     });
 
     socket.on('group_typing', (groupId: string) => {
-      socket.to(`group_${groupId}`).emit('group_user_typing', { userId });
+      socket.to(`group_${groupId}`).emit('group_user_typing', { userId, displayName });
+
+      // Auto-stop after 3s of no new keystrokes
+      if (groupTypingTimers.has(groupId)) clearTimeout(groupTypingTimers.get(groupId)!);
+      const timer = setTimeout(() => {
+        socket.to(`group_${groupId}`).emit('group_user_stop_typing', { userId });
+        groupTypingTimers.delete(groupId);
+      }, 3000);
+      groupTypingTimers.set(groupId, timer);
     });
 
     socket.on('group_stop_typing', (groupId: string) => {
+      if (groupTypingTimers.has(groupId)) {
+        clearTimeout(groupTypingTimers.get(groupId)!);
+        groupTypingTimers.delete(groupId);
+      }
       socket.to(`group_${groupId}`).emit('group_user_stop_typing', { userId });
     });
 
     // Group Messaging
-    socket.on('send_group_message', async (data: { groupId: string; content: string }) => {
+    socket.on('send_group_message', async (data: { groupId: string; content: string; replyToId?: string; attachmentUrl?: string; attachmentType?: string }) => {
       try {
-        const message = await ChatRepository.sendGroupMessage(data.groupId, userId, data.content.trim());
+        const message = await ChatRepository.sendGroupMessage(data.groupId, userId, data.content ? data.content.trim() : '', data.replyToId, data.attachmentUrl, data.attachmentType);
         // sender_name is now included in the DB result via CTE JOIN
         io.to(`group_${data.groupId}`).emit('new_group_message', message);
       } catch (err) {
@@ -195,8 +227,46 @@ export function initSocketServer(httpServer: HttpServer) {
       }
     });
 
-    socket.on('disconnect', () => {
+    // Message Reactions
+    socket.on('react_message', async (data: { messageId: string; messageType: 'dm' | 'group'; emoji: string; friendId?: string; groupId?: string }) => {
+      try {
+        const { messageId, messageType, emoji, friendId, groupId } = data;
+        const result = await ReactionRepository.toggle(messageId, messageType, userId, emoji);
+
+        const payload = {
+          messageId,
+          messageType,
+          reactions: result.reactions,
+          added: result.added,
+          emoji,
+          userId
+        };
+
+        if (messageType === 'dm' && friendId) {
+          const roomId = [userId, friendId].sort().join('_');
+          io.to(roomId).emit('message_reaction_update', payload);
+        } else if (messageType === 'group' && groupId) {
+          io.to(`group_${groupId}`).emit('message_reaction_update', payload);
+        }
+      } catch (err: any) {
+        socket.emit('error', { message: err.message || 'Failed to react' });
+      }
+    });
+
+    socket.on('disconnect', async () => {
       console.log(`[Socket.IO] User disconnected: ${userId}`);
+      
+      const now = new Date();
+      onlineUsers.delete(userId);
+
+      // Update last_seen_at in DB
+      try {
+        await UserRepository.updateLastSeen(userId, now);
+        // Broadcast offline status
+        socket.broadcast.emit('user_presence_change', { userId, online: false, lastSeen: now });
+      } catch (err) {
+        console.error('Failed to update last_seen_at', err);
+      }
     });
   });
 

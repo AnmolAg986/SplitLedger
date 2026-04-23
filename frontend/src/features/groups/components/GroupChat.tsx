@@ -9,6 +9,12 @@ import { useUnreadStore } from '../../../shared/store/useUnreadStore';
 import { PollCard } from './PollCard';
 import type { PollData } from './PollCard';
 import { PinnedMessagesBanner } from './PinnedMessagesBanner';
+import { MessageReactions } from '../../../shared/components/MessageReactions';
+import { ReplyQuote } from '../../../shared/components/ReplyQuote';
+import { LinkPreview } from '../../../shared/components/LinkPreview';
+import { VoiceRecorder } from '../../../shared/components/VoiceRecorder';
+import { VoiceMessage } from '../../../shared/components/VoiceMessage';
+import { CornerUpLeft, Mic } from 'lucide-react';
 
 interface GroupChatProps {
   groupId: string;
@@ -21,12 +27,14 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
   const [isOpen, setIsOpen] = useState(false);
   const [chat, setChat] = useState<any[]>([]);
   const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<{ id: string; content: string; senderName: string } | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const { emit, on } = useSocket();
+  const { emit, on, isConnected } = useSocket();
   const currentUser = useAuthStore(s => s.user);
   const { getSectionCount, markAsRead } = useUnreadStore();
   
@@ -46,7 +54,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
   };
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && isConnected) {
       emit('join_group_room', groupId);
       emit('mark_group_delivered', groupId);
       markAsRead('group', groupId, 'chat');
@@ -54,11 +62,13 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
       apiClient.get(`/chat/group/${groupId}`).then(res => {
         setChat(res.data);
       }).catch(console.error);
-    } else {
+    } else if (!isOpen && isConnected) {
       emit('leave_group_room', groupId);
     }
-    return () => emit('leave_group_room', groupId);
-  }, [isOpen, groupId, emit]);
+    return () => {
+      if (isConnected) emit('leave_group_room', groupId);
+    }
+  }, [isOpen, groupId, emit, isConnected]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -82,8 +92,22 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
       });
       emit('mark_group_read', groupId);
     });
-    const unsub2 = on('group_user_typing', () => setIsTyping(true));
-    const unsub3 = on('group_user_stop_typing', () => setIsTyping(false));
+    const unsub2 = on('group_user_typing', (...args: unknown[]) => {
+      const data = args[0] as { userId: string; displayName: string };
+      setTypingUsers(prev => {
+        const next = new Map(prev);
+        next.set(data.userId, data.displayName);
+        return next;
+      });
+    });
+    const unsub3 = on('group_user_stop_typing', (...args: unknown[]) => {
+      const data = args[0] as { userId: string };
+      setTypingUsers(prev => {
+        const next = new Map(prev);
+        next.delete(data.userId);
+        return next;
+      });
+    });
     // Merge (not replace) so fields present only in local state (e.g. sender_name)
     // are preserved after the server confirms the edit.
     const unsub4 = on('group_message_edited', (editedMsg: any) => {
@@ -137,6 +161,10 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
       const data = args[0] as { messageId: string };
       setLiveUnpinId(data.messageId);
     });
+    const unsub14 = on('message_reaction_update', (...args: unknown[]) => {
+      const data = args[0] as { messageId: string; reactions: any[] };
+      setChat(prev => prev.map(m => m.id === data.messageId ? { ...m, reactions: data.reactions } : m));
+    });
 
     return () => {
       if (unsub1) unsub1();
@@ -152,12 +180,13 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
       if (unsub11) unsub11();
       if (unsub12) unsub12();
       if (unsub13) unsub13();
+      if (unsub14) unsub14();
     };
   }, [isOpen, on, emit, groupId]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chat, isTyping]);
+  }, [chat, typingUsers]);
 
   const handleInput = (val: string) => {
     setInput(val);
@@ -165,7 +194,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
       emit('group_stop_typing', groupId);
-    }, 1500);
+    }, 3000);
   };
 
   const handleSend = async (e: React.FormEvent) => {
@@ -220,16 +249,47 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
         delivered_to: [currentUser?.id],
       };
       setChat(prev => [...prev, tempMsg]);
-      emit('send_group_message', { groupId, content: trimmed });
+      emit('send_group_message', { groupId, content: trimmed, replyToId: replyingTo?.id });
     }
     
     setInput('');
+    setReplyingTo(null);
   };
+
+  const handleVoiceSend = async (blob: Blob) => {
+    setIsRecording(false);
+    try {
+      const formData = new FormData();
+      formData.append('voice', blob, 'voice.webm');
+      const response = await apiClient.post('/upload/voice', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const attachmentUrl = response.data.url;
+      const attachmentType = response.data.type;
+      
+      emit('send_group_message', { groupId, content: '', replyToId: replyingTo?.id, attachmentUrl, attachmentType });
+      setReplyingTo(null);
+    } catch (err) {
+      toast.error('Failed to send voice note');
+    }
+  };
+
+  const startReply = (msg: any) => {
+    setReplyingTo({ id: msg.id, content: msg.content, senderName: msg.sender_name || 'Unknown' });
+    setActiveMenuId(null);
+    setEditingMessageId(null);
+  };
+
+  const cancelReply = () => setReplyingTo(null);
 
   const startEdit = (msg: any) => {
     setEditingMessageId(msg.id);
     setInput(msg.content);
     setActiveMenuId(null);
+  };
+
+  const handleReact = (messageId: string, emoji: string) => {
+    emit('react_message', { messageId, messageType: 'group', emoji, groupId });
   };
 
   const deleteMessage = (msgId: string, forEveryone: boolean) => {
@@ -324,15 +384,28 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
           }
           
           return (
-            <div key={msg.id} className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'} group/msg`}>
+            <div id={`msg-${msg.id}`} key={msg.id} className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'} group/msg transition-all duration-300`}>
               <div className={`px-4 py-2.5 text-[14px] flex flex-col relative rounded-2xl max-w-[80%] ${isDeleted ? 'bg-white/5 border border-white/10 text-zinc-500 italic' : isMe ? 'bg-indigo-500 text-white rounded-br-sm font-medium shadow-md shadow-indigo-500/10' : 'bg-white/10 text-white rounded-bl-sm border border-white/10'}`}>
+                
+                {!isDeleted && msg.reply_to_content && (
+                  <ReplyQuote
+                    senderName={msg.reply_to_sender_name || 'Unknown'}
+                    content={msg.reply_to_content}
+                    messageId={msg.reply_to_id}
+                    compact
+                  />
+                )}
                 
                 {isDeleted ? (
                    <span className="flex items-center gap-1.5"><Trash2 className="w-3.5 h-3.5 opacity-50" /> This message was deleted</span>
                 ) : (
                    <div className="flex flex-col">
                      {!isMe && <span className="block text-[10px] text-zinc-400 mb-0.5">{msg.sender_name}</span>}
-                     <span>{msg.content}</span>
+                     {msg.attachment_type === 'voice' && msg.attachment_url ? (
+                       <VoiceMessage url={msg.attachment_url} />
+                     ) : (
+                       <span>{msg.content}</span>
+                     )}
                      <div className="flex justify-end items-center gap-1 mt-1 -mb-1 opacity-70">
                        {msg.is_edited && <span className="text-[9px] font-bold tracking-widest uppercase mr-1">Edited</span>}
                        <span className="text-[9px]">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
@@ -370,6 +443,12 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
                    </div>
                 )}
 
+                {!isDeleted && msg.link_preview && msg.link_preview.url && (
+                  <div className="mt-1 w-full max-w-sm">
+                    <LinkPreview preview={msg.link_preview} />
+                  </div>
+                )}
+
                 {/* Context Menu Toggle */}
                 {isMe && !isDeleted && (
                   <button 
@@ -383,7 +462,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
                 {/* Context Menu Dropdown */}
                 {activeMenuId === msg.id && (
                   <div className="absolute top-10 -left-36 w-40 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl py-1 z-50 animate-in fade-in zoom-in duration-200">
-                    <button onClick={() => startEdit(msg)} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"><Edit2 className="w-3.5 h-3.5" /> Edit</button>
+                    {isMe && <button onClick={() => startEdit(msg)} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"><Edit2 className="w-3.5 h-3.5" /> Edit</button>}
+                    <button onClick={() => startReply(msg)} className="w-full text-left px-4 py-2 text-sm text-indigo-400 hover:bg-white/10 flex items-center gap-2"><CornerUpLeft className="w-3.5 h-3.5" /> Reply</button>
                     {canPin && (
                       <button
                         onClick={async () => {
@@ -403,42 +483,82 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
                   </div>
                 )}
               </div>
+              {!isDeleted && (
+                <MessageReactions
+                  messageId={msg.id}
+                  messageType="group"
+                  reactions={msg.reactions || []}
+                  currentUserId={currentUser?.id || ''}
+                  onReact={handleReact}
+                  isMe={isMe}
+                />
+              )}
             </div>
           );
         })}
-        {isTyping && (
-           <div className="flex items-center gap-2 mt-2">
-             <div className="flex gap-1 animate-pulse">
-               <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-               <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" style={{ animationDelay: '0.2s' }} />
-               <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" style={{ animationDelay: '0.4s' }} />
-             </div>
-             <span className="text-xs text-zinc-500 font-medium">Someone is typing...</span>
-           </div>
-        )}
+        {typingUsers.size > 0 && (() => {
+          const names = Array.from(typingUsers.values());
+          const label = names.length === 1
+            ? `${names[0]} is typing…`
+            : names.length === 2
+              ? `${names[0]} and ${names[1]} are typing…`
+              : `${names[0]}, ${names[1]} and ${names.length - 2} more are typing…`;
+          return (
+            <div className="flex items-center gap-2 mt-2">
+              <div className="flex gap-1">
+                <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" />
+                <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }} />
+                <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
+              </div>
+              <span className="text-xs text-zinc-500 font-medium">{label}</span>
+            </div>
+          );
+        })()}
         <div ref={chatEndRef} />
       </div>
 
       <div className="p-4 border-t border-white/10 bg-black/30 backdrop-blur-sm z-10">
-        <form onSubmit={handleSend} className="relative flex items-center">
-          <input 
-            type="text"
-            value={input}
-            onChange={e => handleInput(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-full pl-5 pr-14 py-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 transition-colors shadow-inner"
-            placeholder={editingMessageId ? "Edit message..." : "Type a message or /poll Question? | Opt1 | Opt2"}
-          />
-          <div className="absolute right-2 flex items-center gap-1">
-            {editingMessageId && (
-              <button type="button" onClick={() => { setEditingMessageId(null); setInput(''); }} className="p-1.5 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            )}
-            <button type="submit" disabled={!input.trim()} className="p-1.5 bg-indigo-500 text-white rounded-full disabled:opacity-50 hover:bg-indigo-400 transition-colors">
-              <Send className="w-4 h-4 ml-[2px]" />
+        {replyingTo && (
+          <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
+            <CornerUpLeft className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <span className="text-[10px] font-bold text-indigo-400">{replyingTo.senderName}</span>
+              <p className="text-[11px] text-zinc-400 truncate">{replyingTo.content}</p>
+            </div>
+            <button onClick={cancelReply} className="p-1 text-zinc-500 hover:text-white transition-colors">
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
-        </form>
+        )}
+        
+        {isRecording ? (
+          <VoiceRecorder onSend={handleVoiceSend} onCancel={() => setIsRecording(false)} />
+        ) : (
+          <form onSubmit={handleSend} className="relative flex items-center w-full">
+            <input 
+              type="text"
+              value={input}
+              onChange={e => handleInput(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-full pl-5 pr-24 py-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 transition-colors shadow-inner"
+              placeholder={editingMessageId ? "Edit message..." : "Type a message or /poll Question? | Opt1 | Opt2"}
+            />
+            <div className="absolute right-2 flex items-center gap-1">
+              {!editingMessageId && !input.trim() && (
+                <button type="button" onClick={() => setIsRecording(true)} className="p-1.5 text-zinc-400 hover:text-white rounded-full transition-colors">
+                  <Mic className="w-4 h-4" />
+                </button>
+              )}
+              {editingMessageId && (
+                <button type="button" onClick={() => { setEditingMessageId(null); setInput(''); }} className="p-1.5 bg-white/10 text-white rounded-full hover:bg-white/20 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+              <button type="submit" disabled={!input.trim()} className="p-1.5 bg-indigo-500 text-white rounded-full disabled:opacity-50 hover:bg-indigo-400 transition-colors">
+                <Send className="w-4 h-4 ml-[2px]" />
+              </button>
+            </div>
+          </form>
+        )}
       </div>
 
       <ConfirmModal 
