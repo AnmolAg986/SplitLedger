@@ -6,6 +6,7 @@ import { UserRepository } from '../../persistence/UserRepository';
 import { DebtSimplificationService } from '../../../shared/services/DebtSimplificationService';
 import { PermissionService } from '../../../application/services/PermissionService';
 import { GroupActivityRepository } from '../../persistence/GroupActivityRepository';
+import { BlockRepository } from '../../persistence/BlockRepository';
 import { pool } from '../../../config/db';
 import { ioInstance } from '../../websocket/socketServer';
 import QRCode from 'qrcode';
@@ -195,6 +196,11 @@ export class GroupController {
 
       const canDo = await PermissionService.can(requesterId, groupId, 'remove_member');
       if (!canDo) return res.status(403).json({ error: 'Admin or owner permissions required' });
+
+      const isBlocked = await BlockRepository.isBlocked(requesterId, userId);
+      if (isBlocked) {
+        return res.status(403).json({ error: 'You cannot add this user to a group' });
+      }
 
       await GroupRepository.addMember(groupId, userId);
       return res.status(200).json({ message: 'Member added' });

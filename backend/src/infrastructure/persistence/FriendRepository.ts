@@ -45,7 +45,7 @@ export class FriendRepository {
     const res = await pool.query(
       `SELECT
          u.id, u.display_name, u.email, u.avatar_url,
-         f.status, 
+         f.status, f.category,
          CASE 
            WHEN f.last_interaction IS NULL THEN 0
            WHEN EXTRACT(EPOCH FROM (now() - f.last_interaction)) / 86400 >= 2 THEN 0
@@ -84,13 +84,53 @@ export class FriendRepository {
 
   static async searchUsers(query: string, currentUserId: string) {
     const res = await pool.query(
-      `SELECT id, display_name, email, avatar_url
+      `SELECT id, display_name, email, avatar_url, username
        FROM users
        WHERE id != $1
-         AND (display_name ILIKE $2 OR email ILIKE $2)
+         AND (
+           display_name ILIKE $2 OR 
+           email ILIKE $2 OR 
+           username ILIKE $2 OR 
+           phone_number ILIKE $2
+         )
          AND is_verified = true
+         AND NOT EXISTS (
+           SELECT 1 FROM user_blocks
+           WHERE (blocker_id = $1 AND blocked_id = users.id)
+              OR (blocker_id = users.id AND blocked_id = $1)
+         )
        LIMIT 20`,
       [currentUserId, `%${query}%`]
+    );
+    return res.rows;
+  }
+
+  static async getSuggestions(currentUserId: string) {
+    const res = await pool.query(
+      `SELECT DISTINCT u.id, u.display_name, u.avatar_url, u.username, u.email
+       FROM users u
+       JOIN group_members gm1 ON gm1.user_id = u.id
+       JOIN group_members gm2 ON gm2.group_id = gm1.group_id
+       WHERE gm2.user_id = $1
+         AND u.id != $1
+         AND u.is_verified = true
+         AND NOT EXISTS (
+           SELECT 1 FROM friendships f 
+           WHERE (f.user_id_1 = $1 AND f.user_id_2 = u.id)
+              OR (f.user_id_2 = $1 AND f.user_id_1 = u.id)
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM pending_friends pf
+           WHERE (pf.sender_id = $1 AND pf.receiver_id = u.id)
+              OR (pf.sender_id = u.id AND pf.receiver_id = $1)
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM user_blocks ub
+           WHERE (ub.blocker_id = $1 AND ub.blocked_id = u.id)
+              OR (ub.blocker_id = u.id AND ub.blocked_id = $1)
+         )
+       LIMIT 10`,
+      [currentUserId]
     );
     return res.rows;
   }
@@ -170,9 +210,15 @@ export class FriendRepository {
       [userId, friendId]
     );
 
-    // Most common category
+    // Most common category & total count for percentage
     const catRes = await pool.query(
-      `SELECT e.category, COUNT(*) as count
+      `SELECT e.category, COUNT(*) as count,
+        (SELECT COUNT(*) 
+         FROM expenses e2 
+         WHERE e2.deleted_at IS NULL AND e2.category IS NOT NULL
+           AND EXISTS (SELECT 1 FROM expense_splits es3 WHERE es3.expense_id = e2.id AND (es3.user_id = $1 OR e2.paid_by = $1))
+           AND EXISTS (SELECT 1 FROM expense_splits es4 WHERE es4.expense_id = e2.id AND (es4.user_id = $2 OR e2.paid_by = $2))
+        ) as total_count
        FROM expenses e
        WHERE e.deleted_at IS NULL
          AND e.category IS NOT NULL
@@ -184,9 +230,38 @@ export class FriendRepository {
       [userId, friendId]
     );
 
+    const settlementRes = await pool.query(
+      `SELECT 
+         MAX(created_at) as last_settled,
+         AVG(EXTRACT(EPOCH FROM (
+           (SELECT MIN(s2.created_at) FROM settlements s2 
+            WHERE s2.created_at >= e.created_at 
+              AND ((s2.from_user = $1 AND s2.to_user = $2) OR (s2.from_user = $2 AND s2.to_user = $1)))
+           - e.created_at
+         ))) as avg_seconds_to_settle
+       FROM expenses e
+       WHERE e.deleted_at IS NULL
+         AND EXISTS (SELECT 1 FROM expense_splits es1 WHERE es1.expense_id = e.id AND (es1.user_id = $1 OR e.paid_by = $1))
+         AND EXISTS (SELECT 1 FROM expense_splits es2 WHERE es2.expense_id = e.id AND (es2.user_id = $2 OR e.paid_by = $2))
+         AND (SELECT MIN(s2.created_at) FROM settlements s2 
+              WHERE s2.created_at >= e.created_at 
+                AND ((s2.from_user = $1 AND s2.to_user = $2) OR (s2.from_user = $2 AND s2.to_user = $1))) IS NOT NULL`,
+      [userId, friendId]
+    );
+
+    const totalCount = parseInt(catRes.rows[0]?.total_count || '0', 10);
+    const catCount = parseInt(catRes.rows[0]?.count || '0', 10);
+    const mostCommonCategoryPct = totalCount > 0 ? Math.round((catCount / totalCount) * 100) : 0;
+    
+    const avgSeconds = parseFloat(settlementRes.rows[0]?.avg_seconds_to_settle || '0');
+    const avgDaysToSettle = avgSeconds > 0 ? Math.round(avgSeconds / 86400) : 0;
+
     return {
       totalSpentTogether: parseFloat(spentRes.rows[0]?.total_amount || '0'),
-      mostCommonCategory: catRes.rows[0]?.category || null
+      mostCommonCategory: catRes.rows[0]?.category || null,
+      mostCommonCategoryPct,
+      lastSettled: settlementRes.rows[0]?.last_settled || null,
+      avgDaysToSettle
     };
   }
 
@@ -312,5 +387,13 @@ export class FriendRepository {
       [userId, limit]
     );
     return res.rows;
+  }
+  static async updateCategory(userId1: string, userId2: string, category: string) {
+    const u1 = userId1 < userId2 ? userId1 : userId2;
+    const u2 = userId1 < userId2 ? userId2 : userId1;
+    await pool.query(
+      `UPDATE friendships SET category = $3 WHERE user_id_1 = $1 AND user_id_2 = $2`,
+      [u1, u2, category]
+    );
   }
 }

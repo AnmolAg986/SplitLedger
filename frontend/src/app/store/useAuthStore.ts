@@ -7,6 +7,7 @@ interface User {
   phoneNumber?: string | null;
   displayName: string;
   avatarUrl?: string | null;
+  username?: string | null;
   loginCount: number;
 }
 

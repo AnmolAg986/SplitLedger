@@ -6,6 +6,7 @@ import { ExpenseComments } from '../../expenses/components/ExpenseComments';
 import { ExpenseAttachments } from '../../expenses/components/ExpenseAttachments';
 import { useSocket } from '../../../shared/hooks/useSocket';
 import { useAuthStore } from '../../../app/store/useAuthStore';
+import { useSettingsStore } from '../../../shared/store/useSettingsStore';
 import { ArrowLeft, Send, Receipt, Banknote, Edit2, Trash2, Bell, Loader2, MessageSquare, X, Check, CheckCheck, MoreVertical } from 'lucide-react';
 import { ExpenseModal } from '../../expenses/components/ExpenseModal';
 import { ConfirmModal } from '../../../shared/components/ConfirmModal';
@@ -24,11 +25,11 @@ interface FriendExpense {
 }
 
 interface FriendDetailData {
-  friend: { id: string; display_name: string; nickname?: string };
+  friend: { id: string; display_name: string; nickname?: string; category?: string };
   balance: { netBalance: number; totalOwed: number; totalOwe: number };
   expenses: FriendExpense[];
   mutualGroups: { id: string; name: string }[];
-  stats?: { totalSpentTogether: number; mostCommonCategory: string };
+  stats?: { totalSpentTogether: number; mostCommonCategory: string; mostCommonCategoryPct: number; lastSettled: string | null; avgDaysToSettle: number };
 }
 
 interface ChatMessage {
@@ -59,6 +60,10 @@ export const FriendDetail = () => {
   const [isExpenseModalOpen, setExpenseModalOpen] = useState(false);
   const [expenseToEdit, setExpenseToEdit] = useState<FriendExpense | null>(null);
   const [loadingReminders, setLoadingReminders] = useState<Record<string, boolean>>({});
+  
+  const { toggleMute, isMuted } = useSettingsStore();
+  const [showSettings, setShowSettings] = useState(false);
+  const muted = id ? isMuted(id) : false;
   const [isEditingNickname, setIsEditingNickname] = useState(false);
   const [nicknameInput, setNicknameInput] = useState('');
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -292,6 +297,33 @@ export const FriendDetail = () => {
     }
   };
 
+  const handleUpdateCategory = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    try {
+      await apiClient.put(`/friends/${id}/category`, { category: e.target.value });
+      toast.success('Category updated');
+      refreshData();
+    } catch {
+      toast.error('Failed to update category');
+    }
+  };
+
+  const handleBlockUser = () => {
+    showConfirm(
+      'Block User',
+      'Are you sure you want to block this user? They will no longer be able to message you or add you to groups, and your friendship will be removed.',
+      async () => {
+        try {
+          await apiClient.post(`/blocks/${id}`);
+          toast.success('User blocked');
+          navigate('/connections');
+        } catch {
+          toast.error('Failed to block user');
+        }
+      },
+      'danger'
+    );
+  };
+
   const handleSettleAll = () => {
     if (!detail) return;
     showConfirm(
@@ -376,6 +408,19 @@ export const FriendDetail = () => {
                  {detail.friend.nickname && (
                    <span className="text-[11px] text-zinc-500 font-medium">{detail.friend.display_name}</span>
                  )}
+                 <div className={`flex items-center ${detail.friend.nickname ? 'ml-2 border-l border-white/10 pl-2' : ''}`}>
+                   <select 
+                     value={detail.friend.category || 'other'}
+                     onChange={handleUpdateCategory}
+                     className="bg-transparent text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-white cursor-pointer focus:outline-none appearance-none"
+                   >
+                     <option value="other" className="bg-zinc-900 text-white">Other</option>
+                     <option value="family" className="bg-zinc-900 text-white">Family</option>
+                     <option value="work" className="bg-zinc-900 text-white">Work</option>
+                     <option value="roommate" className="bg-zinc-900 text-white">Roommate</option>
+                     <option value="travel" className="bg-zinc-900 text-white">Travel</option>
+                   </select>
+                 </div>
                  {detail.mutualGroups?.length > 0 && (
                    <div className="flex items-center gap-1.5 ml-2 border-l border-white/10 pl-3 flex-wrap">
                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
@@ -420,6 +465,32 @@ export const FriendDetail = () => {
              >
                <Bell className="w-4 h-4" /> Send Alert
              </button>
+
+             <div className="relative">
+               <button 
+                 onClick={() => setShowSettings(!showSettings)}
+                 className="p-2 hover:bg-white/10 rounded-lg transition-colors border border-transparent hover:border-white/10 text-zinc-400"
+               >
+                 <MoreVertical className="w-5 h-5" />
+               </button>
+
+               {showSettings && (
+                 <div className="absolute right-0 top-12 w-48 bg-[#0c0c0e] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
+                   <button 
+                     onClick={() => { toggleMute(id!); setShowSettings(false); toast.success(muted ? 'Notifications unmuted' : 'Notifications muted'); }}
+                     className="w-full text-left px-4 py-3 text-xs font-medium text-white hover:bg-white/5 transition-colors border-b border-white/5"
+                   >
+                     {muted ? 'Unmute Notifications' : 'Mute Notifications'}
+                   </button>
+                   <button 
+                     onClick={() => { setShowSettings(false); handleBlockUser(); }}
+                     className="w-full text-left px-4 py-3 text-xs font-bold text-rose-500 hover:bg-rose-500/10 transition-colors"
+                   >
+                     Block User
+                   </button>
+                 </div>
+               )}
+             </div>
          </div>
        </div>
 
@@ -433,6 +504,41 @@ export const FriendDetail = () => {
                totalOwedToMe={detail.balance.netBalance > 0 ? detail.balance.netBalance : 0} 
                totalIOwe={detail.balance.netBalance < 0 ? Math.abs(detail.balance.netBalance) : 0} 
              />
+
+             {/* MUTUAL INSIGHTS */}
+             {detail.stats && (
+               <div className="mt-8">
+                 <h3 className="text-[13px] font-semibold text-zinc-500 uppercase tracking-widest mb-3">Mutual Insights</h3>
+                 <div className="grid grid-cols-2 gap-3">
+                   <div className="p-4 bg-white/[0.02] border border-white/5 rounded-xl hover:bg-white/[0.04] transition-colors">
+                     <span className="block text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-1">Most Spent On</span>
+                     <div className="text-sm text-white font-medium">
+                       {detail.stats.mostCommonCategory ? `${detail.stats.mostCommonCategory} (${detail.stats.mostCommonCategoryPct}%)` : 'Not enough data'}
+                     </div>
+                   </div>
+                   <div className="p-4 bg-white/[0.02] border border-white/5 rounded-xl hover:bg-white/[0.04] transition-colors">
+                     <span className="block text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-1">Total Transacted</span>
+                     <div className="text-sm text-amber-400 font-bold">
+                       ₹{detail.stats.totalSpentTogether}
+                     </div>
+                   </div>
+                   <div className="p-4 bg-white/[0.02] border border-white/5 rounded-xl hover:bg-white/[0.04] transition-colors">
+                     <span className="block text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-1">Avg. Settle Time</span>
+                     <div className="text-sm text-white font-medium">
+                       {detail.stats.avgDaysToSettle > 0 ? `${detail.stats.avgDaysToSettle} days` : 'N/A'}
+                     </div>
+                   </div>
+                   <div className="p-4 bg-white/[0.02] border border-white/5 rounded-xl hover:bg-white/[0.04] transition-colors">
+                     <span className="block text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-1">Last Settled</span>
+                     <div className="text-sm text-emerald-400 font-medium">
+                       {detail.stats.lastSettled ? (
+                         `${Math.max(0, Math.floor((new Date().getTime() - new Date(detail.stats.lastSettled).getTime()) / 86400000))} days ago`
+                       ) : 'Never'}
+                     </div>
+                   </div>
+                 </div>
+               </div>
+             )}
            </div>
 
            {/* Expenses Feed */}

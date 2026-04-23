@@ -8,6 +8,7 @@ export const Profile = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [username, setUsername] = useState(user?.username || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -45,6 +46,7 @@ export const Profile = () => {
     try {
       const res = await apiClient.put('/auth/profile', {
         displayName: displayName.trim(),
+        username: username.trim() || undefined,
         avatarUrl
       });
       
@@ -141,6 +143,21 @@ export const Profile = () => {
                     placeholder="Your name"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Username</label>
+                <div className="relative flex items-center bg-white/5 border border-white/10 rounded-xl overflow-hidden focus-within:border-cyan-500/50 transition-colors">
+                  <div className="pl-4 pr-2 text-zinc-500 font-medium">splitledger.app/u/</div>
+                  <input 
+                    type="text"
+                    value={username}
+                    onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                    className="w-full bg-transparent py-3 pr-4 text-white focus:outline-none placeholder:text-zinc-600"
+                    placeholder="username"
+                  />
+                </div>
+                <p className="text-[10px] text-zinc-500 mt-1.5 ml-1">Optional. Must be unique and contain only letters, numbers, and underscores.</p>
               </div>
 
               <div>

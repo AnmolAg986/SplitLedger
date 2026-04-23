@@ -7,6 +7,8 @@ const router = Router();
 
 router.put('/profile', requireAuth, AuthController.updateProfile);
 
+router.get('/public/:username', AuthController.getPublicProfile);
+
 router.post('/register', authRateLimiter, AuthController.register);
 router.post('/login', authRateLimiter, AuthController.login);
 router.post('/refresh', AuthController.refresh);

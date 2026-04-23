@@ -7,6 +7,7 @@ import { useSocket } from '../../shared/hooks/useSocket';
 import { toast } from '../../shared/store/useToastStore';
 import { useUnreadStore } from '../../shared/store/useUnreadStore';
 import { useNotificationStore } from '../../shared/store/useNotificationStore';
+import { useSettingsStore } from '../../shared/store/useSettingsStore';
 import { NotificationCenter } from '../../shared/components/NotificationCenter';
 
 export const DashboardLayout = () => {
@@ -27,11 +28,16 @@ export const DashboardLayout = () => {
         useNotificationStore.getState().addNotification(data);
       }
       
-      // Still show toast for immediate feedback
-      if (data.type === 'reminder') {
-        toast.info(data.message || data.body);
-      } else {
-        toast.success(data.message || data.body);
+      const { isMuted } = useSettingsStore.getState();
+      const shouldMute = data.entityType === 'friend' && data.entityId && isMuted(data.entityId);
+      
+      if (!shouldMute) {
+        // Still show toast for immediate feedback
+        if (data.type === 'reminder') {
+          toast.info(data.message || data.body);
+        } else {
+          toast.success(data.message || data.body);
+        }
       }
     });
 

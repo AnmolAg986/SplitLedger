@@ -5,6 +5,7 @@ import { ExpenseRepository } from '../../persistence/ExpenseRepository';
 import { UserRepository } from '../../persistence/UserRepository';
 import { DebtSimplificationService } from '../../../shared/services/DebtSimplificationService';
 import { DashboardRepository } from '../../persistence/DashboardRepository';
+import { BlockRepository } from '../../persistence/BlockRepository';
 
 export class FriendController {
 
@@ -33,6 +34,11 @@ export class FriendController {
         return res.status(200).json({ message: 'User not found. Invite sent!' });
       }
       if (friend.id === userId) return res.status(400).json({ error: 'You cannot add yourself' });
+
+      const isBlocked = await BlockRepository.isBlocked(userId, friend.id);
+      if (isBlocked) {
+        return res.status(403).json({ error: 'You cannot send a friend request to this user' });
+      }
 
       const existing = await FriendRepository.getFriendshipStatus(userId, friend.id);
       if (existing) {
@@ -162,7 +168,8 @@ export class FriendController {
           display_name: friend.displayName,
           email: friend.email,
           avatar_url: friend.avatarUrl,
-          nickname
+          nickname,
+          category: friendship?.category || 'other'
         },
         balance, 
         expenses,
@@ -243,6 +250,40 @@ export class FriendController {
       return res.status(200).json({ message: 'Nudge sent successfully' });
     } catch (err) {
       console.error('[FriendController] nudgeFriend error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async updateCategory(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const friendId = req.params.friendId as string;
+      const { category } = req.body;
+      
+      const allowedCategories = ['family', 'work', 'roommate', 'travel', 'other'];
+      if (!allowedCategories.includes(category)) {
+        return res.status(400).json({ error: 'Invalid category' });
+      }
+
+      await FriendRepository.updateCategory(userId, friendId, category);
+      return res.status(200).json({ message: 'Category updated successfully' });
+    } catch (err) {
+      console.error('[FriendController] updateCategory error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async getSuggestions(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const suggestions = await FriendRepository.getSuggestions(userId);
+      return res.status(200).json(suggestions);
+    } catch (err) {
+      console.error('[FriendController] getSuggestions error:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }

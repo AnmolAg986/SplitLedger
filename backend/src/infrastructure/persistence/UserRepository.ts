@@ -7,6 +7,7 @@ export interface User {
   displayName: string;
   passwordHash?: string;
   avatarUrl?: string;
+  username?: string | null;
   defaultCurrency: string;
   upiId?: string;
   isVerified: boolean;
@@ -20,7 +21,7 @@ export class UserRepository {
     const isPhone = /^\+?\d+$/.test(identifier);
     const query = isPhone 
       ? 'SELECT * FROM users WHERE phone_number = $1' 
-      : 'SELECT * FROM users WHERE email = $1';
+      : 'SELECT * FROM users WHERE email = $1 OR lower(username) = lower($1)';
       
     const res = await pool.query(query, [identifier]);
     if (res.rows.length === 0) return null;
@@ -32,6 +33,7 @@ export class UserRepository {
       displayName: row.display_name,
       passwordHash: row.password_hash,
       avatarUrl: row.avatar_url,
+      username: row.username,
       defaultCurrency: row.default_currency,
       upiId: row.upi_id,
       isVerified: row.is_verified,
@@ -51,6 +53,7 @@ export class UserRepository {
       phoneNumber: row.phone_number,
       displayName: row.display_name,
       avatarUrl: row.avatar_url,
+      username: row.username,
       defaultCurrency: row.default_currency,
       upiId: row.upi_id,
       isVerified: row.is_verified,
@@ -60,11 +63,11 @@ export class UserRepository {
     };
   }
 
-  static async create(email: string | null, phoneNumber: string | null, displayName: string, passwordHash?: string): Promise<User> {
+  static async create(email: string | null, phoneNumber: string | null, displayName: string, passwordHash?: string, username?: string | null): Promise<User> {
     const res = await pool.query(
-      `INSERT INTO users (email, phone_number, display_name, password_hash)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [email, phoneNumber, displayName, passwordHash]
+      `INSERT INTO users (email, phone_number, display_name, password_hash, username)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [email, phoneNumber, displayName, passwordHash, username || null]
     );
     const row = res.rows[0];
     return {
@@ -74,6 +77,7 @@ export class UserRepository {
       displayName: row.display_name,
       passwordHash: row.password_hash,
       avatarUrl: row.avatar_url,
+      username: row.username,
       defaultCurrency: row.default_currency,
       upiId: row.upi_id,
       isVerified: row.is_verified,
@@ -91,10 +95,10 @@ export class UserRepository {
     await pool.query('UPDATE users SET login_count = login_count + 1 WHERE id = $1', [userId]);
   }
 
-  static async updateProfile(userId: string, displayName: string, avatarUrl: string | null): Promise<User | null> {
+  static async updateProfile(userId: string, displayName: string, avatarUrl: string | null, username: string | null): Promise<User | null> {
     const res = await pool.query(
-      `UPDATE users SET display_name = $1, avatar_url = $2, updated_at = now() WHERE id = $3 RETURNING *`,
-      [displayName, avatarUrl, userId]
+      `UPDATE users SET display_name = $1, avatar_url = $2, username = $4, updated_at = now() WHERE id = $3 RETURNING *`,
+      [displayName, avatarUrl, userId, username]
     );
     if (res.rows.length === 0) return null;
     const row = res.rows[0];
@@ -104,6 +108,7 @@ export class UserRepository {
       phoneNumber: row.phone_number,
       displayName: row.display_name,
       avatarUrl: row.avatar_url,
+      username: row.username,
       defaultCurrency: row.default_currency,
       upiId: row.upi_id,
       isVerified: row.is_verified,

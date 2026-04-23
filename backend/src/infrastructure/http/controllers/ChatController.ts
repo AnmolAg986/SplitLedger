@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../types/Request';
 import { ChatRepository } from '../../persistence/ChatRepository';
+import { BlockRepository } from '../../persistence/BlockRepository';
 
 export class ChatController {
 
@@ -56,6 +57,11 @@ export class ChatController {
 
       if (!content || content.trim().length === 0) {
         return res.status(400).json({ error: 'Message content is required' });
+      }
+
+      const isBlocked = await BlockRepository.isBlocked(userId, friendId);
+      if (isBlocked) {
+        return res.status(403).json({ error: 'You cannot send messages to this user' });
       }
 
       const message = await ChatRepository.sendMessage(userId, friendId, content.trim());

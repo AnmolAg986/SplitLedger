@@ -13,6 +13,7 @@ import { GroupDetail } from './features/groups/pages/GroupDetail';
 import { JoinGroup } from './features/groups/pages/JoinGroup';
 import { Activity } from './features/dashboard/pages/Activity';
 import { Profile } from './features/dashboard/pages/Profile';
+import { PublicProfile } from './features/friends/pages/PublicProfile';
 import { Connections } from './features/connections/pages/Connections';
 import { ToastContainer } from './shared/components/ToastContainer';
 import { NotificationPreferences } from './features/profile/pages/NotificationPreferences';
@@ -28,6 +29,9 @@ export const App = () => {
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        
+        {/* Public Routes */}
+        <Route path="/u/:username" element={<PublicProfile />} />
         
         {/* Protected Navigation Shell */}
         <Route element={<ProtectedRoute />}>

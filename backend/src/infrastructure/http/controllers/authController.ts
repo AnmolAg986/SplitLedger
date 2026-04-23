@@ -18,6 +18,7 @@ const registerSchema = z.object({
   identifier: identifierSchema,
   password: z.string().min(8, "Password is too weak. Please use at least 8 characters.").regex(/^[a-zA-Z0-9]+$/, "Password can only contain letters and numbers (no special characters or spaces)"),
   displayName: z.string().min(2),
+  username: z.string().min(3, "Username must be at least 3 characters").regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores").optional(),
 });
 
 const loginSchema = z.object({
@@ -40,22 +41,31 @@ export class AuthController {
       const phoneVal = isPhone(identifier) ? identifier : null;
       const emailVal = isPhone(identifier) ? null : identifier;
 
-      const user = await UserRepository.create(emailVal, phoneVal, displayName, passwordHash);
+      let usernameVal = registerSchema.shape.username ? req.body.username : null;
 
-      // Generate and send OTP
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      await UserRepository.storeOTP(user.id, otp);
-      
-      if (phoneVal) {
-        await sendVerificationSMS(phoneVal, otp);
-      } else if (emailVal) {
-        await sendVerificationEmail(emailVal, otp);
+      try {
+        const user = await UserRepository.create(emailVal, phoneVal, displayName, passwordHash, usernameVal);
+        
+        // Generate and send OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        await UserRepository.storeOTP(user.id, otp);
+        
+        if (phoneVal) {
+          await sendVerificationSMS(phoneVal, otp);
+        } else if (emailVal) {
+          await sendVerificationEmail(emailVal, otp);
+        }
+
+        return res.status(201).json({
+          message: "Account created successfully. Please verify your OTP.",
+          identifier: identifier
+        });
+      } catch (err: any) {
+        if (err.code === '23505' && err.constraint === 'users_username_idx') {
+           return res.status(409).json({ error: 'Username is already taken' });
+        }
+        throw err;
       }
-
-      return res.status(201).json({
-        message: "Account created successfully. Please verify your OTP.",
-        identifier: identifier
-      });
     } catch (e: unknown) {
       if (e instanceof z.ZodError) {
         return res.status(400).json({ error: e.issues });
@@ -97,6 +107,7 @@ export class AuthController {
           email: user.email, 
           phoneNumber: user.phoneNumber, 
           displayName: user.displayName,
+          username: user.username,
           loginCount: user.loginCount + 1
         },
         accessToken,
@@ -166,6 +177,7 @@ export class AuthController {
           email: updatedUser?.email, 
           phoneNumber: updatedUser?.phoneNumber, 
           displayName: updatedUser?.displayName,
+          username: updatedUser?.username,
           loginCount: updatedUser?.loginCount
         },
         accessToken,
@@ -277,28 +289,61 @@ export class AuthController {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-      const { displayName, avatarUrl } = req.body;
+      const { displayName, avatarUrl, username } = req.body;
       if (!displayName || displayName.trim().length < 2) {
         return res.status(400).json({ error: 'Display name must be at least 2 characters long' });
       }
+      
+      if (username && !/^[a-zA-Z0-9_]{3,}$/.test(username)) {
+        return res.status(400).json({ error: 'Username must be at least 3 characters and contain only letters, numbers, and underscores' });
+      }
 
-      const updatedUser = await UserRepository.updateProfile(userId, displayName.trim(), avatarUrl || null);
-      if (!updatedUser) {
+      try {
+        const updatedUser = await UserRepository.updateProfile(userId, displayName.trim(), avatarUrl || null, username || null);
+        if (!updatedUser) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+
+        return res.status(200).json({
+          user: {
+            id: updatedUser.id,
+            email: updatedUser.email,
+            phoneNumber: updatedUser.phoneNumber,
+            displayName: updatedUser.displayName,
+            avatarUrl: updatedUser.avatarUrl,
+            username: updatedUser.username,
+            loginCount: updatedUser.loginCount
+          }
+        });
+      } catch (err: any) {
+        if (err.code === '23505') {
+           return res.status(409).json({ error: 'Username is already taken' });
+        }
+        throw err;
+      }
+    } catch (e) {
+      console.error('[AuthController] updateProfile error:', e);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async getPublicProfile(req: Request, res: Response) {
+    try {
+      const username = req.params.username as string;
+      const user = await UserRepository.findByIdentifier(username); // since findByIdentifier checks username
+      
+      if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
 
       return res.status(200).json({
-        user: {
-          id: updatedUser.id,
-          email: updatedUser.email,
-          phoneNumber: updatedUser.phoneNumber,
-          displayName: updatedUser.displayName,
-          avatarUrl: updatedUser.avatarUrl,
-          loginCount: updatedUser.loginCount
-        }
+        id: user.id,
+        display_name: user.displayName,
+        avatar_url: user.avatarUrl,
+        username: user.username
       });
     } catch (e) {
-      console.error('[AuthController] updateProfile error:', e);
+      console.error('[AuthController] getPublicProfile error:', e);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }

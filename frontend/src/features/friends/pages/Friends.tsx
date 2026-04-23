@@ -4,6 +4,7 @@ import { apiClient } from '../../../shared/api/axios';
 import { UserPlus, Search, Trophy, Flame, Loader2, Receipt, X, Link, Clock } from 'lucide-react';
 import { CreateExpenseModal } from '../../../shared/components/CreateExpenseModal';
 import { useAuthStore } from '../../../app/store/useAuthStore';
+import { toast } from '../../../shared/store/useToastStore';
 import { InviteModal } from '../../../shared/components/InviteModal';
 import { useUnreadStore } from '../../../shared/store/useUnreadStore';
 
@@ -14,14 +15,18 @@ export const Friends = () => {
   
   const [friends, setFriends] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
   const [insights, setInsights] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [addIdentifier, setAddIdentifier] = useState('');
+
+  const CATEGORIES = ['all', 'family', 'work', 'roommate', 'travel', 'other'];
 
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     try {
@@ -47,15 +52,16 @@ export const Friends = () => {
 
   const fetchFriends = async () => {
     try {
-      const [friendsRes, insightsRes, pendingRes] = await Promise.all([
+      const [friendsRes, insightsRes, pendingRes, suggestionsRes] = await Promise.all([
         apiClient.get('/friends'),
         apiClient.get('/friends/insights'),
         apiClient.get('/friends/pending'),
-        apiClient.get('/friends/recent')
+        apiClient.get('/friends/suggestions')
       ]);
       setFriends(friendsRes.data);
       setInsights(insightsRes.data);
       setPendingRequests(pendingRes.data);
+      setSuggestions(suggestionsRes.data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -101,11 +107,13 @@ export const Friends = () => {
     }
   };
 
-  const filteredFriends = friends.filter(f => 
-    f.display_name?.toLowerCase().includes(search.toLowerCase()) ||
-    f.email?.toLowerCase().includes(search.toLowerCase()) ||
-    f.phone_number?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredFriends = friends.filter(f => {
+    const matchesSearch = f.display_name?.toLowerCase().includes(search.toLowerCase()) ||
+      f.email?.toLowerCase().includes(search.toLowerCase()) ||
+      f.phone_number?.toLowerCase().includes(search.toLowerCase());
+    const matchesCategory = categoryFilter === 'all' || f.category === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
 
   return (
     <div className="p-8 h-full overflow-y-auto custom-scrollbar relative">
@@ -243,6 +251,61 @@ export const Friends = () => {
                </div>
             )}
 
+            {/* SUGGESTIONS */}
+            {suggestions.length > 0 && (
+               <div className="z-10 relative">
+                 <h3 className="text-[12px] font-bold text-zinc-400 uppercase tracking-widest mb-4">People you may know</h3>
+                 <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar">
+                    {suggestions.map((user, i) => (
+                      <div key={`sugg-${i}`} className="p-4 w-[180px] rounded-2xl bg-white/[0.02] border border-white/10 flex flex-col items-center text-center gap-3 shrink-0">
+                         <div className="w-14 h-14 rounded-full bg-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center text-xl overflow-hidden">
+                           {user.avatar_url ? (
+                             <img src={`http://localhost:3000${user.avatar_url}`} alt={user.display_name} className="w-full h-full object-cover" />
+                           ) : (
+                             user.display_name.charAt(0).toUpperCase()
+                           )}
+                         </div>
+                         <div className="flex flex-col w-full">
+                           <span className="text-white text-[14px] font-bold truncate">{user.display_name}</span>
+                           {user.username && <span className="text-zinc-500 text-[11px] truncate">@{user.username}</span>}
+                         </div>
+                         <button 
+                           onClick={async () => {
+                             try {
+                               await apiClient.post('/friends/add', { identifier: user.username || user.email });
+                               toast.success(`Request sent to ${user.display_name}`);
+                               fetchFriends();
+                             } catch {
+                               toast.error('Failed to send request');
+                             }
+                           }}
+                           className="w-full bg-white/10 text-white text-[12px] font-bold py-1.5 rounded-lg hover:bg-white/20 transition-colors mt-auto"
+                         >
+                           Add Friend
+                         </button>
+                      </div>
+                    ))}
+                 </div>
+               </div>
+            )}
+
+            {/* CATEGORY FILTERS */}
+            <div className="z-10 relative mt-2 flex flex-wrap items-center gap-2">
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setCategoryFilter(cat)}
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${
+                    categoryFilter === cat 
+                      ? 'bg-amber-500 text-black shadow-[0_0_10px_rgba(245,158,11,0.5)]' 
+                      : 'bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white border border-white/10'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
             {/* FRIENDS GRID */}
             <div className="z-10 relative">
               
@@ -300,7 +363,14 @@ export const Friends = () => {
                       </div>
                       
                       <div className="relative z-10 w-full mb-4">
-                        <h3 className="text-xl font-bold text-white mb-1 group-hover:text-amber-400 transition-colors truncate">{f.nickname || f.display_name}</h3>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-xl font-bold text-white group-hover:text-amber-400 transition-colors truncate">{f.nickname || f.display_name}</h3>
+                          {f.category && f.category !== 'other' && (
+                            <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-white/10 text-zinc-300 border border-white/10">
+                              {f.category}
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[13px] text-zinc-500 truncate">{f.email}</div>
                       </div>
                       

@@ -20,6 +20,7 @@ import unreadRoutes from './infrastructure/http/routes/unreadRoutes';
 import notificationRoutes from './infrastructure/http/routes/notificationRoutes';
 import analyticsRoutes from './infrastructure/http/routes/analyticsRoutes';
 import budgetRoutes from './infrastructure/http/routes/budgetRoutes';
+import blockRoutes from './infrastructure/http/routes/blockRoutes';
 import path from 'path';
 import { initSocketServer } from './infrastructure/websocket/socketServer';
 import { startReminderJob } from './infrastructure/cron/reminderJob';
@@ -70,6 +71,7 @@ app.use('/unread', unreadRoutes);
 app.use('/notifications', notificationRoutes);
 app.use('/analytics', analyticsRoutes);
 app.use('/budgets', budgetRoutes);
+app.use('/blocks', blockRoutes);
 
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
