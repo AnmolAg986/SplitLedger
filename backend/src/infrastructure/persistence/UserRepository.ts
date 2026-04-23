@@ -12,6 +12,7 @@ export interface User {
   upiId?: string;
   isVerified: boolean;
   loginCount: number;
+  lastSeenAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,6 +39,7 @@ export class UserRepository {
       upiId: row.upi_id,
       isVerified: row.is_verified,
       loginCount: row.login_count,
+      lastSeenAt: row.last_seen_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -58,6 +60,7 @@ export class UserRepository {
       upiId: row.upi_id,
       isVerified: row.is_verified,
       loginCount: row.login_count,
+      lastSeenAt: row.last_seen_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -178,5 +181,12 @@ export class UserRepository {
       return true;
     }
     return false;
+  }
+
+  static async updateLastSeen(userId: string, lastSeen: Date) {
+    await pool.query(
+      `UPDATE users SET last_seen_at = $1 WHERE id = $2`,
+      [lastSeen, userId]
+    );
   }
 }

@@ -7,11 +7,14 @@ import { useAuthStore } from '../../../app/store/useAuthStore';
 import { toast } from '../../../shared/store/useToastStore';
 import { InviteModal } from '../../../shared/components/InviteModal';
 import { useUnreadStore } from '../../../shared/store/useUnreadStore';
+import { useSocket } from '../../../shared/hooks/useSocket';
 
 export const Friends = () => {
   const navigate = useNavigate();
   const currentUser = useAuthStore(state => state.user);
   const getEntityCount = useUnreadStore(state => state.getEntityCount);
+  const { on } = useSocket();
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   
   const [friends, setFriends] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
@@ -73,6 +76,18 @@ export const Friends = () => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchFriends();
   }, []);
+
+  useEffect(() => {
+    const unsub = on('user_presence_change', (data: any) => {
+      setOnlineUserIds(prev => {
+        const next = new Set(prev);
+        if (data.online) next.add(data.userId);
+        else next.delete(data.userId);
+        return next;
+      });
+    });
+    return () => { if (unsub) unsub(); };
+  }, [on]);
 
   const handleAddFriend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -346,11 +361,16 @@ export const Friends = () => {
                       )}
 
                       <div className="flex justify-between items-start mb-5 relative z-10 w-full">
-                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center border border-amber-500/30 group-hover:scale-105 transition-transform shadow-[0_0_15px_rgba(245,158,11,0.15)] overflow-hidden">
-                          {f.avatar_url ? (
-                            <img src={`http://localhost:3000${f.avatar_url}`} alt={f.display_name} className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-amber-400 font-black text-2xl">{f.display_name.charAt(0).toUpperCase()}</span>
+                        <div className="relative w-16 h-16">
+                          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center border border-amber-500/30 group-hover:scale-105 transition-transform shadow-[0_0_15px_rgba(245,158,11,0.15)] overflow-hidden">
+                            {f.avatar_url ? (
+                              <img src={`http://localhost:3000${f.avatar_url}`} alt={f.display_name} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-amber-400 font-black text-2xl">{f.display_name.charAt(0).toUpperCase()}</span>
+                            )}
+                          </div>
+                          {onlineUserIds.has(f.id) && (
+                            <span className="absolute bottom-0.5 right-0.5 w-3 h-3 bg-green-500 border-2 border-[#0c0c0e] rounded-full shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
                           )}
                         </div>
                         {f.spending_streak > 0 && (
