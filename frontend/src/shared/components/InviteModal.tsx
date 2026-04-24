@@ -32,6 +32,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose, targe
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isOpen && targetId) fetchToken();
   }, [isOpen, targetId, type]);
 

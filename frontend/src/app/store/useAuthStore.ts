@@ -8,6 +8,7 @@ interface User {
   displayName: string;
   avatarUrl?: string | null;
   username?: string | null;
+  onboardingCompleted?: boolean;
   loginCount: number;
 }
 

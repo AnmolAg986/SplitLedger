@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Activity, LayoutDashboard, Settings, PanelLeft, PanelLeftClose, LogOut, Users, Receipt, User, Clock, Bell } from 'lucide-react';
+import { Activity, LayoutDashboard, Settings, PanelLeft, PanelLeftClose, LogOut, Users, Receipt, User, Clock, Bell, Moon, Sun, Monitor } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { CommandPalette } from '../../features/dashboard/components/CommandPalette';
 import { useSocket } from '../../shared/hooks/useSocket';
@@ -8,12 +8,27 @@ import { toast } from '../../shared/store/useToastStore';
 import { useUnreadStore } from '../../shared/store/useUnreadStore';
 import { useNotificationStore } from '../../shared/store/useNotificationStore';
 import { useSettingsStore } from '../../shared/store/useSettingsStore';
+import { useThemeStore } from '../../shared/store/useThemeStore';
 import { NotificationCenter } from '../../shared/components/NotificationCenter';
+import { ShortcutOverlay } from '../../shared/components/ShortcutOverlay';
+import { useHotkeys } from 'react-hotkeys-hook';
+import { CreateExpenseModal } from '../../shared/components/CreateExpenseModal';
+import { OnboardingModal } from '../../shared/components/OnboardingModal';
+import { apiClient } from '../../shared/api/axios';
 
 export const DashboardLayout = () => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const [isGlobalExpenseOpen, setIsGlobalExpenseOpen] = useState(false);
+  const [friends, setFriends] = useState<any[]>([]);
+  const { theme, setTheme } = useThemeStore();
+
+  useHotkeys('ctrl+n, cmd+n', (e) => {
+    e.preventDefault();
+    setIsGlobalExpenseOpen(true);
+    apiClient.get('/friends').then(res => setFriends(res.data)).catch(console.error);
+  }, { enableOnFormTags: false });
   const { on, isConnected } = useSocket();
   const { fetchCounts, handleUpdate, getPageCount, getTotalActivityCount } = useUnreadStore();
 
@@ -61,6 +76,12 @@ export const DashboardLayout = () => {
     navigate('/login');
   };
 
+  const cycleTheme = () => {
+    if (theme === 'system') setTheme('dark');
+    else if (theme === 'dark') setTheme('light');
+    else setTheme('system');
+  };
+
   const totalActivityBadge = getTotalActivityCount();
   const friendsBadge = getPageCount('friend');
   const groupsBadge = getPageCount('group');
@@ -75,11 +96,11 @@ export const DashboardLayout = () => {
   ];
 
   return (
-    <div className="flex h-screen w-screen bg-[#050505] text-white font-sans overflow-hidden">
+    <div className="flex h-screen w-screen bg-gray-50 dark:bg-[#050505] text-zinc-900 dark:text-white font-sans overflow-hidden transition-colors duration-300">
       
       {/* Sidebar - Precision Transition */}
       <aside 
-        className={`${isCollapsed ? 'w-20' : 'w-64'} border-r border-white/10 bg-[#0c0c0e] flex flex-col justify-between hidden md:flex shadow-2xl relative transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1) z-20`}
+        className={`${isCollapsed ? 'w-20' : 'w-64'} border-r border-zinc-200 dark:border-white/10 bg-white dark:bg-[#0c0c0e] flex flex-col justify-between hidden md:flex shadow-2xl relative transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1) z-20`}
       >
         
         {/* Top Branding & Navigation */}
@@ -183,8 +204,8 @@ export const DashboardLayout = () => {
         </div>
 
         {/* Persistent User Profile & Logout section */}
-        <div className={`p-4 border-t border-white/10 bg-[#0a0a0c] flex items-center ${isCollapsed ? 'justify-center flex-col gap-4' : 'gap-3'}`}>
-          <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white shrink-0 overflow-hidden">
+        <div className={`p-4 border-t border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-[#0a0a0c] flex items-center ${isCollapsed ? 'justify-center flex-col gap-4' : 'gap-3'}`}>
+          <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-white/10 flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-white shrink-0 overflow-hidden">
             {user?.avatarUrl ? (
               <img src={`http://localhost:3000${user.avatarUrl}`} alt={user?.displayName} className="w-full h-full object-cover" />
             ) : (
@@ -194,7 +215,7 @@ export const DashboardLayout = () => {
           
           {!isCollapsed && (
             <div className="flex-1 flex flex-col whitespace-nowrap overflow-hidden pr-2">
-              <span className="text-[13px] font-bold text-white leading-tight truncate">
+              <span className="text-[13px] font-bold text-zinc-800 dark:text-white leading-tight truncate">
                 {user?.displayName || 'Unknown User'}
               </span>
               <span className="text-[11px] font-medium text-zinc-500 truncate max-w-[140px]">
@@ -203,31 +224,93 @@ export const DashboardLayout = () => {
             </div>
           )}
           
-          <button 
-            onClick={handleLogout}
-            className="p-2 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-            title="Sign Out"
-          >
-            <LogOut className="h-5 w-5" strokeWidth={2.5} />
-          </button>
+          <div className={`flex ${isCollapsed ? 'flex-col gap-2' : 'gap-1'}`}>
+            <button 
+              onClick={cycleTheme}
+              className="p-2 rounded-lg text-zinc-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+              title={`Theme: ${theme}`}
+            >
+              {theme === 'system' ? <Monitor className="h-4 w-4" /> : theme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+            </button>
+            <button 
+              onClick={handleLogout}
+              className="p-2 rounded-lg text-zinc-500 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+              title="Sign Out"
+            >
+              <LogOut className="h-4 w-4" strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
       </aside>
 
       {/* Global Modals & Slide-overs */}
       <CommandPalette />
       <NotificationCenter />
+      <ShortcutOverlay />
+
+      {user && !user.onboardingCompleted && (
+        <OnboardingModal onComplete={() => useAuthStore.setState({ user: { ...user, onboardingCompleted: true } })} />
+      )}
+
+      {isGlobalExpenseOpen && user && (
+        <CreateExpenseModal 
+          onClose={() => setIsGlobalExpenseOpen(false)}
+          onSuccess={() => { toast.success('Expense added successfully!'); setIsGlobalExpenseOpen(false); }}
+          currentUserId={user.id}
+          availableUsers={[
+            { id: user.id, display_name: user.displayName || 'You' },
+            ...friends.map(f => ({ id: f.id, display_name: f.display_name }))
+          ]}
+        />
+      )}
 
       {/* Main Content Area */}
-      <main className="flex-1 relative overflow-hidden flex flex-col">
+      <main className="flex-1 relative overflow-hidden flex flex-col pb-[72px] md:pb-0">
         <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-cyan-500/5 rounded-full blur-[150px] pointer-events-none"></div>
         
         {/* Top Actions (Floating Topbar) */}
         <NotificationBell />
 
-        <div className="flex-1 overflow-y-auto w-full h-full relative z-10">
+        <div className="flex-1 overflow-y-auto w-full h-full relative z-10 custom-scrollbar">
             <Outlet />
         </div>
       </main>
+
+      {/* Mobile Bottom Tab Bar */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 h-[72px] bg-white/90 dark:bg-black/90 backdrop-blur-xl border-t border-zinc-200 dark:border-white/10 z-50 flex items-center justify-around px-4 pb-[env(safe-area-inset-bottom)]">
+        {menuItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <NavLink
+              key={item.name}
+              to={item.path}
+              className={({ isActive }) =>
+                `flex flex-col items-center justify-center gap-1 w-16 h-12 rounded-xl transition-colors relative ` +
+                (isActive ? 'text-cyan-500' : 'text-zinc-500 dark:text-zinc-400')
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <div className="relative">
+                    <Icon className="w-5 h-5" strokeWidth={isActive ? 2.5 : 2} />
+                    {item.badge && (
+                      <span className="absolute -top-1 -right-2 bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-lg ring-2 ring-white dark:ring-[#0c0c0e]">
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-medium tracking-wide">
+                    {item.name}
+                  </span>
+                  {isActive && (
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 w-8 h-1 bg-cyan-500 rounded-b-full" />
+                  )}
+                </>
+              )}
+            </NavLink>
+          );
+        })}
+      </div>
     </div>
   );
 };

@@ -75,7 +75,7 @@ export const SettleUpModal = ({ isOpen, onClose, onSuccess }: SettleUpModalProps
             await apiClient.post(`/settlements/${res.data.id}/proof`, formData, {
               headers: { 'Content-Type': 'multipart/form-data' }
             });
-          } catch (err) {
+          } catch {
             toast.error('Payment recorded, but proof upload failed');
           }
         }
@@ -85,8 +85,8 @@ export const SettleUpModal = ({ isOpen, onClose, onSuccess }: SettleUpModalProps
       setProofFile(null);
       setPaymentRef('');
       if (onSuccess) onSuccess();
-    } catch (err) {
-      console.error('Settlement failed:', err);
+    } catch {
+      toast.error('Failed to submit payment proof');
     } finally {
       setSettling(null);
     }

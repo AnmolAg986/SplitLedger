@@ -9,9 +9,11 @@ interface CreateExpenseModalProps {
   groupId?: string; // If null, it's a global expense
   availableUsers: { id: string; display_name: string }[];
   currentUserId: string;
+  onOptimisticSubmit?: (expense: any, tempId: string) => void;
+  onRevert?: (tempId: string) => void;
 }
 
-export const CreateExpenseModal: React.FC<CreateExpenseModalProps> = ({ onClose, onSuccess, groupId, availableUsers, currentUserId }) => {
+export const CreateExpenseModal: React.FC<CreateExpenseModalProps> = ({ onClose, onSuccess, groupId, availableUsers, currentUserId, onOptimisticSubmit, onRevert }) => {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState<number | ''>('');
   const [currency, setCurrency] = useState('INR');
@@ -86,7 +88,27 @@ export const CreateExpenseModal: React.FC<CreateExpenseModalProps> = ({ onClose,
       }
     }
 
+    const tempId = `temp_${Date.now()}`;
+    const totalAmountNum = totalAmount;
+
     setLoading(true);
+
+    if (onOptimisticSubmit) {
+      const tempExpense = {
+        id: tempId,
+        description,
+        amount: totalAmountNum,
+        currency,
+        category: 'other',
+        date: date,
+        paid_by_id: paidBy,
+        paid_by_name: availableUsers.find(u => u.id === paidBy)?.display_name || 'You',
+        is_settled: false,
+        created_at: new Date().toISOString()
+      };
+      onOptimisticSubmit(tempExpense, tempId);
+    }
+
     try {
         await apiClient.post('/expenses', {
         groupId: groupId || null,
@@ -101,6 +123,7 @@ export const CreateExpenseModal: React.FC<CreateExpenseModalProps> = ({ onClose,
       onSuccess();
       onClose();
     } catch (err: unknown) {
+      if (onRevert) onRevert(tempId);
       const error = err as { response?: { data?: { error?: string } } };
       setError(error.response?.data?.error || 'Failed to create expense');
     } finally {
@@ -118,8 +141,8 @@ export const CreateExpenseModal: React.FC<CreateExpenseModalProps> = ({ onClose,
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-zinc-900 border border-white/10 p-6 rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 pb-safe sm:pb-4">
+      <div className="bg-zinc-900 border border-white/10 p-6 rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
         
         <div className="flex justify-between items-center mb-6 shrink-0">
           <h3 className="text-xl font-bold text-white flex items-center gap-2">

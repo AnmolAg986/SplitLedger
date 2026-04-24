@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { EmptyState } from './EmptyState';
 import { useNotificationStore } from '../store/useNotificationStore';
 import { apiClient } from '../api/axios';
 import { formatDistanceToNow } from 'date-fns';
@@ -147,15 +148,12 @@ export function NotificationCenter() {
         {/* List */}
         <div className="flex-1 overflow-y-auto p-2 scrollbar-thin">
           {notifications.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4">
-              <div className="w-16 h-16 rounded-full bg-zinc-900/50 flex items-center justify-center border border-zinc-800/50">
-                <Bell size={28} className="text-zinc-600" />
-              </div>
-              <div>
-                <p className="text-white font-medium">All caught up!</p>
-                <p className="text-sm text-zinc-500 mt-1">You have no new notifications.</p>
-              </div>
-            </div>
+            <EmptyState
+              variant="notifications"
+              headline="All caught up!"
+              subtext="You have no notifications right now. We'll let you know when something needs your attention."
+              compact
+            />
           ) : (
             <div className="space-y-1">
               {notifications.map((notif) => (

@@ -16,13 +16,48 @@ import { Profile } from './features/dashboard/pages/Profile';
 import { PublicProfile } from './features/friends/pages/PublicProfile';
 import { Connections } from './features/connections/pages/Connections';
 import { ToastContainer } from './shared/components/ToastContainer';
+import { PWAPrompt } from './shared/components/PWAPrompt';
 import { NotificationPreferences } from './features/profile/pages/NotificationPreferences';
 import { Analytics } from './features/profile/pages/Analytics';
+import { useEffect } from 'react';
+import { useThemeStore } from './shared/store/useThemeStore';
+
+const ThemeManager = () => {
+  const { theme } = useThemeStore();
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    root.classList.remove('light', 'dark');
+
+    if (theme === 'system') {
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      root.classList.add(systemTheme);
+    } else {
+      root.classList.add(theme);
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    if (theme !== 'system') return;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = () => {
+      const root = window.document.documentElement;
+      root.classList.remove('light', 'dark');
+      root.classList.add(mediaQuery.matches ? 'dark' : 'light');
+    };
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [theme]);
+
+  return null;
+};
 
 export const App = () => {
   return (
     <BrowserRouter>
+      <ThemeManager />
       <ToastContainer />
+      <PWAPrompt />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
