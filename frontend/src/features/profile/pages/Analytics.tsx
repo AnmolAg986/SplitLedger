@@ -31,7 +31,7 @@ export const Analytics = () => {
       link.click();
       link.remove();
       toast.success('Export downloaded successfully!');
-    } catch (err) {
+    } catch {
       toast.error('Failed to export data');
     } finally {
       setExporting(false);
@@ -43,9 +43,8 @@ export const Analytics = () => {
       .then(res => {
         setData(res.data);
       })
-      .catch(err => {
+      .catch(() => {
         toast.error('Failed to load analytics');
-        console.error(err);
       })
       .finally(() => setLoading(false));
 
@@ -53,8 +52,8 @@ export const Analytics = () => {
       .then(res => {
         setInsights(res.data.insights || []);
       })
-      .catch(err => {
-        console.error('Failed to load AI insights:', err);
+      .catch(() => {
+        console.error('Failed to load AI insights');
       })
       .finally(() => setLoadingInsights(false));
   }, []);

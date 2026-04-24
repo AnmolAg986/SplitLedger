@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { EmptyState } from '../../../shared/components/EmptyState';
+import { ListCardSkeleton } from '../../../shared/components/Skeleton';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../shared/api/axios';
 import { Users, Loader2, Plus, UsersRound, X, Search, Clock } from 'lucide-react';
@@ -20,6 +22,10 @@ export const Groups = () => {
   const [groupSearch, setGroupSearch] = useState('');
   const [isArchivedView, setIsArchivedView] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  const [visibleLimit, setVisibleLimit] = useState(50);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem('groupsRecentSearches') || '[]');
@@ -62,6 +68,21 @@ export const Groups = () => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshData();
   }, [isArchivedView]);
+
+  useEffect(() => {
+    const filteredGroups = (Array.isArray(groups) ? groups : [])
+      .filter(g => Boolean(g.is_archived) === isArchivedView)
+      .filter(g => g.name.toLowerCase().includes(groupSearch.toLowerCase()));
+
+    if (filteredGroups.length <= visibleLimit) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        setVisibleLimit(prev => Math.min(prev + 50, filteredGroups.length));
+      }
+    }, { threshold: 0.1 });
+    if (loadMoreRef.current) observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [groups, isArchivedView, groupSearch, visibleLimit]);
 
   // Search friends to add as group members
   useEffect(() => {
@@ -209,21 +230,30 @@ export const Groups = () => {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-zinc-500" /></div>
-      ) : groups.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-32 text-center z-10 relative">
-          <div className="w-16 h-16 bg-white/5 border border-white/10 rounded-full flex items-center justify-center mb-4">
-            <UsersRound className="w-8 h-8 text-zinc-600" />
-          </div>
-          <h3 className="text-lg font-bold text-white mb-2">No groups yet</h3>
-          <p className="text-zinc-500 text-sm max-w-sm">Create a group to start tracking expenses for trips, apartments, or events.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 relative z-10 w-full">
+          <ListCardSkeleton />
+          <ListCardSkeleton />
+          <ListCardSkeleton />
+          <ListCardSkeleton />
         </div>
+      ) : groups.length === 0 ? (
+        <EmptyState
+          variant="groups"
+          headline={groupSearch ? 'No matches found' : isArchivedView ? 'No archived groups' : 'No groups yet'}
+          subtext={groupSearch ? `No groups match "${groupSearch}".` : isArchivedView ? 'Archived groups will appear here.' : 'Create a group to start tracking expenses for trips, apartments, or events.'}
+          ctaLabel={!groupSearch && !isArchivedView ? 'Create First Group' : undefined}
+          onCta={!groupSearch && !isArchivedView ? () => setShowCreateModal(true) : undefined}
+        />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 relative z-10">
-          {(Array.isArray(groups) ? groups : [])
-            .filter(g => Boolean(g.is_archived) === isArchivedView)
-            .filter(g => g.name.toLowerCase().includes(groupSearch.toLowerCase()))
-            .map((g) => (
+          {(() => {
+            const filteredGroups = (Array.isArray(groups) ? groups : [])
+              .filter(g => Boolean(g.is_archived) === isArchivedView)
+              .filter(g => g.name.toLowerCase().includes(groupSearch.toLowerCase()));
+
+            return (
+              <>
+                {filteredGroups.slice(0, visibleLimit).map((g) => (
             <button 
               key={g.id}
               onClick={() => {
@@ -262,6 +292,14 @@ export const Groups = () => {
               </div>
             </button>
           ))}
+                  {filteredGroups.length > visibleLimit && (
+                    <div ref={loadMoreRef} className="w-full py-4 flex justify-center col-span-full">
+                      <div className="w-5 h-5 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin" />
+                    </div>
+                  )}
+              </>
+            );
+          })()}
         </div>
       )}
 

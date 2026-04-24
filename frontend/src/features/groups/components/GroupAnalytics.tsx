@@ -30,7 +30,7 @@ export const GroupAnalytics: React.FC<{ groupId: string }> = ({ groupId }) => {
       link.click();
       link.remove();
       toast.success(`${format.toUpperCase()} downloaded successfully!`);
-    } catch (err) {
+    } catch {
       toast.error(`Failed to export ${format.toUpperCase()}`);
     } finally {
       if (format === 'csv') setExportingCsv(false);

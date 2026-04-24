@@ -1,19 +1,49 @@
-import React, { useEffect, useState } from 'react';
-import { Search, UserPlus, CreditCard, Users, ArrowRight, Clock, X } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Search, UserPlus, CreditCard, Users, ArrowRight, X, TerminalSquare, Navigation, CheckCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import Fuse from 'fuse.js';
+import { apiClient } from '../../../shared/api/axios';
+
+interface PaletteItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  iconName: string;
+  colorClass: string;
+  bgClass: string;
+  route: string;
+  type: 'action' | 'friend' | 'group' | 'page';
+}
+
+const iconMap: Record<string, React.ElementType> = {
+  TerminalSquare,
+  CreditCard,
+  UserPlus,
+  Users,
+  ArrowRight,
+  CheckCircle,
+  Navigation
+};
 
 export const CommandPalette = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+  const [recentIds, setRecentIds] = useState<string[]>(() => {
     try {
-      return JSON.parse(localStorage.getItem('recentSearches') || '[]');
+      return JSON.parse(localStorage.getItem('paletteRecentIds') || '[]');
     } catch {
       return [];
     }
   });
+  const [friends, setFriends] = useState<any[]>([]);
+  const [groups, setGroups] = useState<any[]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
+  
   const navigate = useNavigate();
+  const inputRef = useRef<HTMLInputElement>(null);
 
+  // Keyboard shortcut to open/close
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -28,68 +58,107 @@ export const CommandPalette = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen]);
 
-  // Reset query whenever the palette closes
   useEffect(() => {
-    if (!isOpen) {
-      setTimeout(() => setQuery(''), 200);
+    if (isOpen) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      setQuery('');
+      setActiveIndex(0);
+      /* eslint-enable react-hooks/set-state-in-effect */
+      if (friends.length === 0 || groups.length === 0) {
+        Promise.all([
+          apiClient.get('/friends').catch(() => ({ data: [] })),
+          apiClient.get('/groups').catch(() => ({ data: [] }))
+        ]).then(([friendsRes, groupsRes]) => {
+          setFriends(friendsRes.data);
+          setGroups(groupsRes.data);
+        });
+      }
+      setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActiveIndex(0);
+  }, [query]);
 
-  const actions = [
-    { 
-      id: 'expense', 
-      title: 'Add an expense', 
-      icon: CreditCard, 
-      colorClass: 'text-emerald-400', 
-      bgClass: 'bg-emerald-500/10 border-emerald-500/20 group-hover:bg-emerald-500/20',
-      route: '/expenses' 
-    },
-    { 
-      id: 'group', 
-      title: 'Create a group', 
-      icon: Users, 
-      colorClass: 'text-blue-400', 
-      bgClass: 'bg-blue-500/10 border-blue-500/20 group-hover:bg-blue-500/20',
-      route: '/connections?tab=groups' 
-    },
-    { 
-      id: 'friend', 
-      title: 'Add a friend', 
-      icon: UserPlus, 
-      colorClass: 'text-purple-400', 
-      bgClass: 'bg-purple-500/10 border-purple-500/20 group-hover:bg-purple-500/20',
-      route: '/connections?tab=friends' 
-    },
+  if (!isOpen) return null;
+  const items: PaletteItem[] = [
+    { id: 'p-dash', title: 'Dashboard', subtitle: 'Go to home', iconName: 'TerminalSquare', colorClass: 'text-zinc-400', bgClass: 'bg-zinc-500/10 border-zinc-500/20 group-hover:bg-zinc-500/20', route: '/', type: 'page' },
+    { id: 'p-exp', title: 'Expenses', subtitle: 'View all expenses', iconName: 'CreditCard', colorClass: 'text-emerald-400', bgClass: 'bg-emerald-500/10 border-emerald-500/20 group-hover:bg-emerald-500/20', route: '/expenses', type: 'page' },
+    { id: 'a-add-friend', title: 'Add a friend', subtitle: 'Connections', iconName: 'UserPlus', colorClass: 'text-purple-400', bgClass: 'bg-purple-500/10 border-purple-500/20 group-hover:bg-purple-500/20', route: '/connections?tab=friends', type: 'action' },
+    { id: 'a-add-group', title: 'Create a group', subtitle: 'Connections', iconName: 'Users', colorClass: 'text-blue-400', bgClass: 'bg-blue-500/10 border-blue-500/20 group-hover:bg-blue-500/20', route: '/connections?tab=groups', type: 'action' },
   ];
 
-  const filteredActions = actions.filter(action => 
-    action.title.toLowerCase().includes(query.toLowerCase())
-  );
+  friends.forEach(f => {
+    const name = f.nickname || f.display_name;
+    items.push({ id: `f-${f.id}`, title: `Jump to ${name}`, subtitle: 'Friend', iconName: 'Navigation', colorClass: 'text-amber-400', bgClass: 'bg-amber-500/10 border-amber-500/20 group-hover:bg-amber-500/20', route: `/friends/${f.id}`, type: 'friend' });
+    items.push({ id: `fe-${f.id}`, title: `Add expense with ${name}`, subtitle: 'Quick Action', iconName: 'CreditCard', colorClass: 'text-emerald-400', bgClass: 'bg-emerald-500/10 border-emerald-500/20 group-hover:bg-emerald-500/20', route: `/expenses?friendId=${f.id}&action=add`, type: 'action' });
+    items.push({ id: `fs-${f.id}`, title: `Settle up with ${name}`, subtitle: 'Quick Action', iconName: 'CheckCircle', colorClass: 'text-rose-400', bgClass: 'bg-rose-500/10 border-rose-500/20 group-hover:bg-rose-500/20', route: `/expenses?friendId=${f.id}&action=settle`, type: 'action' });
+  });
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && query.trim()) {
-      saveSearch(query.trim());
-      // Optionally trigger the first action if there's an exact match or just 1 filtered action
-      if (filteredActions.length === 1) {
-        setIsOpen(false);
-        navigate(filteredActions[0].route);
+  groups.forEach(g => {
+    items.push({ id: `g-${g.id}`, title: `Jump to ${g.name}`, subtitle: 'Group', iconName: 'Navigation', colorClass: 'text-indigo-400', bgClass: 'bg-indigo-500/10 border-indigo-500/20 group-hover:bg-indigo-500/20', route: `/groups/${g.id}`, type: 'group' });
+  });
+
+  const fuse = new Fuse(items, {
+    keys: ['title', 'subtitle', 'type'],
+    threshold: 0.3, // strict enough but allows typos
+  });
+
+  const filteredItems = query.trim() ? fuse.search(query).map(r => r.item) : [];
+  
+  const displayList = query.trim() 
+    ? filteredItems 
+    : (recentIds.map(id => items.find(i => i.id === id)).filter(Boolean) as PaletteItem[]);
+
+  if (displayList.length === 0 && !query.trim()) {
+    displayList.push(...items.slice(0, 5));
+  }
+
+  const saveRecent = (id: string) => {
+    const updated = [id, ...recentIds.filter(i => i !== id)].slice(0, 5);
+    setRecentIds(updated);
+    localStorage.setItem('paletteRecentIds', JSON.stringify(updated));
+  };
+
+  const removeRecent = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const updated = recentIds.filter(i => i !== id);
+    setRecentIds(updated);
+    localStorage.setItem('paletteRecentIds', JSON.stringify(updated));
+  };
+
+  const handleSelect = (item: PaletteItem) => {
+    saveRecent(item.id);
+    setIsOpen(false);
+    navigate(item.route);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex(prev => (prev < displayList.length - 1 ? prev + 1 : prev));
+      scrollIntoView(activeIndex + 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex(prev => (prev > 0 ? prev - 1 : prev));
+      scrollIntoView(activeIndex - 1);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (displayList[activeIndex]) {
+        handleSelect(displayList[activeIndex]);
       }
     }
   };
 
-  const saveSearch = (searchQuery: string) => {
-    const updated = [searchQuery, ...recentSearches.filter(s => s.toLowerCase() !== searchQuery.toLowerCase())].slice(0, 5);
-    setRecentSearches(updated);
-    localStorage.setItem('recentSearches', JSON.stringify(updated));
-  };
-
-  const removeSearch = (e: React.MouseEvent, searchQuery: string) => {
-    e.stopPropagation();
-    const updated = recentSearches.filter(s => s !== searchQuery);
-    setRecentSearches(updated);
-    localStorage.setItem('recentSearches', JSON.stringify(updated));
+  const scrollIntoView = (index: number) => {
+    if (listRef.current) {
+      const el = listRef.current.children[index] as HTMLElement;
+      if (el) {
+        el.scrollIntoView({ block: 'nearest' });
+      }
+    }
   };
 
   return (
@@ -107,81 +176,90 @@ export const CommandPalette = () => {
         <div className="flex items-center px-4 py-4 border-b border-white/10 bg-[#0a0a0c]">
           <Search className="h-5 w-5 text-cyan-400 mr-3 shrink-0" strokeWidth={2.5} />
           <input 
+            ref={inputRef}
             type="text" 
-            autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             className="w-full bg-transparent text-white placeholder-zinc-500 text-[15px] font-medium outline-none"
-            placeholder="Search or jump to... (Press Enter to save search)" 
+            placeholder="Search commands, friends, or groups... (e.g. 'Settle up')" 
           />
           <div className="shrink-0 text-[10px] uppercase font-bold tracking-widest text-zinc-500 bg-white/5 px-2 py-1 rounded shadow-inner ml-2">ESC</div>
         </div>
 
         {/* Action List */}
-        <div className="p-2 space-y-1 max-h-[60vh] overflow-y-auto">
-          {query === '' && recentSearches.length > 0 && (
-            <div className="mb-4">
-              <div className="px-3 py-2.5 text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">
-                Recent Searches
-              </div>
-              {recentSearches.map((search, idx) => (
-                <button
-                  key={`recent-${idx}`}
-                  onClick={() => setQuery(search)}
-                  className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl hover:bg-white/5 focus:bg-white/5 outline-none transition-all group cursor-pointer text-left mb-1"
-                >
-                  <div className="flex items-center gap-3">
-                    <Clock className="h-4 w-4 text-zinc-500 group-hover:text-zinc-300 transition-colors" />
-                    <span className="text-[14px] text-zinc-300 group-hover:text-white font-medium transition-colors">
-                      {search}
-                    </span>
-                  </div>
-                  <div 
-                    onClick={(e) => removeSearch(e, search)}
-                    className="p-1 rounded-md text-zinc-600 hover:bg-white/10 hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100"
-                    title="Remove from history"
-                  >
-                    <X className="h-4 w-4" />
-                  </div>
-                </button>
-              ))}
+        <div className="p-2 max-h-[60vh] overflow-y-auto custom-scrollbar flex flex-col">
+          {!query.trim() && (
+            <div className="px-3 py-2 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+              {recentIds.length > 0 ? 'Recent' : 'Suggested'}
             </div>
           )}
 
-          {filteredActions.length > 0 ? (
-            <>
-              <div className="px-3 py-2.5 text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">
-                Quick Actions
-              </div>
-              
-              {filteredActions.map((action) => (
-                <button 
-                  key={action.id}
-                  onClick={() => { setIsOpen(false); navigate(action.route); }} 
-                  className="flex items-center justify-between w-full px-3 py-3 rounded-xl hover:bg-white/5 focus:bg-white/5 outline-none transition-all group cursor-pointer text-left mb-1"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`h-8 w-8 rounded-lg border flex items-center justify-center transition-colors ${action.bgClass} ${action.colorClass}`}>
-                      <action.icon className="h-4 w-4" strokeWidth={2.5} />
+          {displayList.length > 0 ? (
+            <div ref={listRef}>
+              {displayList.map((action, idx) => {
+                const Icon = iconMap[action.iconName] || ArrowRight;
+                const isActive = idx === activeIndex;
+                const isRecent = !query.trim() && recentIds.includes(action.id);
+                
+                return (
+                  <button 
+                    key={action.id}
+                    onClick={() => handleSelect(action)}
+                    onMouseEnter={() => setActiveIndex(idx)}
+                    className={`flex items-center justify-between w-full px-3 py-3 rounded-xl outline-none transition-all group cursor-pointer text-left mb-1 ${isActive ? 'bg-white/10' : 'hover:bg-white/5'}`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`h-8 w-8 rounded-lg border flex items-center justify-center transition-colors ${action.bgClass} ${action.colorClass}`}>
+                        <Icon className="h-4 w-4" strokeWidth={2.5} />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className={`text-[14px] font-medium transition-colors ${isActive ? 'text-white' : 'text-zinc-300'}`}>
+                          {action.title}
+                        </span>
+                        {action.subtitle && (
+                          <span className="text-[11px] text-zinc-500">
+                            {action.subtitle}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-[14px] text-zinc-300 group-hover:text-white font-medium transition-colors">
-                      {action.title}
-                    </span>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-zinc-600 group-hover:text-cyan-400 transition-colors opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0" />
-                </button>
-              ))}
-            </>
+                    
+                    <div className="flex items-center gap-2">
+                      {isRecent && (
+                        <div 
+                          onClick={(e) => removeRecent(e, action.id)}
+                          className="p-1 rounded-md text-zinc-600 hover:bg-white/10 hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100 mr-2"
+                          title="Remove from recents"
+                        >
+                          <X className="h-4 w-4" />
+                        </div>
+                      )}
+                      {isActive && (
+                        <ArrowRight className="h-4 w-4 text-cyan-400" />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           ) : (
             <div className="py-14 text-center">
               <Search className="h-8 w-8 text-zinc-600 mx-auto mb-3 opacity-50" strokeWidth={1.5} />
               <p className="text-[14px] font-medium text-zinc-400">
                 No results found for <span className="text-white">"{query}"</span>
               </p>
-              <p className="text-[12px] text-zinc-600 mt-1">Try searching for "expense" or "group"</p>
             </div>
           )}
+        </div>
+        
+        {/* Footer shortcuts hint */}
+        <div className="border-t border-white/5 px-4 py-2.5 bg-[#0a0a0c] flex items-center justify-between text-zinc-500 text-[11px] font-medium">
+           <div className="flex items-center gap-4">
+             <span className="flex items-center gap-1"><span className="bg-white/10 px-1 rounded text-white font-mono shadow-inner text-[10px]">↑</span> <span className="bg-white/10 px-1 rounded text-white font-mono shadow-inner text-[10px]">↓</span> to navigate</span>
+             <span className="flex items-center gap-1"><span className="bg-white/10 px-1 rounded text-white font-mono shadow-inner text-[10px]">↵</span> to select</span>
+           </div>
+           <span>Powered by Fuse.js</span>
         </div>
       </div>
     </div>

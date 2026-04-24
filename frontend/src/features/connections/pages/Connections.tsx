@@ -72,7 +72,7 @@ const TabBar = ({ activeTab, onTabChange }: { activeTab: TabType; onTabChange: (
   ];
 
   return (
-    <div className="px-6 pt-5 pb-0 shrink-0 bg-[#050505] z-20 relative">
+    <div className="px-6 pt-5 pb-0 shrink-0 bg-transparent z-20 relative">
       <div className="flex items-center gap-1 p-1 bg-white/5 border border-white/10 rounded-xl w-fit">
         {tabs.map(tab => {
           const Icon = tab.icon;

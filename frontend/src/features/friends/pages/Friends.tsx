@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { EmptyState } from '../../../shared/components/EmptyState';
+import { ListCardSkeleton } from '../../../shared/components/Skeleton';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../shared/api/axios';
-import { UserPlus, Search, Trophy, Flame, Loader2, Receipt, X, Link, Clock } from 'lucide-react';
+import { UserPlus, Search, Trophy, Flame, Receipt, X, Link, Clock } from 'lucide-react';
 import { CreateExpenseModal } from '../../../shared/components/CreateExpenseModal';
 import { useAuthStore } from '../../../app/store/useAuthStore';
 import { toast } from '../../../shared/store/useToastStore';
@@ -28,6 +30,9 @@ export const Friends = () => {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [addIdentifier, setAddIdentifier] = useState('');
+
+  const [visibleLimit, setVisibleLimit] = useState(50);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   const CATEGORIES = ['all', 'family', 'work', 'roommate', 'travel', 'other'];
 
@@ -130,6 +135,17 @@ export const Friends = () => {
     return matchesSearch && matchesCategory;
   });
 
+  useEffect(() => {
+    if (filteredFriends.length <= visibleLimit) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        setVisibleLimit(prev => Math.min(prev + 50, filteredFriends.length));
+      }
+    }, { threshold: 0.1 });
+    if (loadMoreRef.current) observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [filteredFriends.length, visibleLimit]);
+
   return (
     <div className="p-8 h-full overflow-y-auto custom-scrollbar relative">
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-amber-500/10 rounded-full blur-[120px] pointer-events-none" />
@@ -196,7 +212,12 @@ export const Friends = () => {
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-zinc-500" /></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 relative z-10 w-full mt-8">
+            <ListCardSkeleton />
+            <ListCardSkeleton />
+            <ListCardSkeleton />
+            <ListCardSkeleton />
+          </div>
         ) : (
           <div className="flex flex-col gap-8 w-full relative z-10">
             {/* PENDING REQUESTS */}
@@ -325,24 +346,17 @@ export const Friends = () => {
             <div className="z-10 relative">
               
               {filteredFriends.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-center bg-white/[0.02] border border-white/5 rounded-[2rem] shadow-2xl backdrop-blur-sm">
-                  <div className="w-20 h-20 bg-gradient-to-br from-white/10 to-white/5 border border-white/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
-                    <UserPlus className="w-10 h-10 text-zinc-500" />
-                  </div>
-                  <h3 className="text-xl font-bold text-white mb-3">{search ? 'No results found' : 'No friends yet'}</h3>
-                  <p className="text-zinc-500 text-[15px] max-w-sm leading-relaxed">{search ? `No friends match "${search}"` : 'Add friends to start sharing expenses and tracking balances.'}</p>
-                  {!search && (
-                    <button 
-                      onClick={() => setShowAddModal(true)}
-                      className="mt-6 px-6 py-3 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl transition-colors shadow-lg shadow-amber-500/20"
-                    >
-                      Add Your First Friend
-                    </button>
-                  )}
-                </div>
+                <EmptyState
+                  variant="friends"
+                  headline="No friends found"
+                  subtext={search ? "We couldn't find anyone matching your search." : "You haven't added any friends yet. Add someone to start splitting expenses!"}
+                  ctaLabel={search ? undefined : "Add your first friend"}
+                  onCta={search ? undefined : () => setShowAddModal(true)}
+                  compact
+                />
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {filteredFriends.map((f, i) => (
+                  {filteredFriends.slice(0, visibleLimit).map((f, i) => (
                     <button
                       key={i}
                       onClick={() => {
@@ -418,6 +432,11 @@ export const Friends = () => {
                       </div>
                     </button>
                   ))}
+                  {filteredFriends.length > visibleLimit && (
+                    <div ref={loadMoreRef} className="w-full py-4 flex justify-center">
+                      <div className="w-5 h-5 rounded-full border-2 border-amber-500/30 border-t-amber-500 animate-spin" />
+                    </div>
+                  )}
                 </div>
               )}
             </div>

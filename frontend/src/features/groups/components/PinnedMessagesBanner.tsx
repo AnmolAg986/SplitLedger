@@ -38,9 +38,11 @@ export const PinnedMessagesBanner = ({ groupId, canPin, livePin, liveUnpinId, on
     }
   }, [groupId]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   // Merge live socket pushes
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!livePin) return;
     setPinned(prev => {
@@ -53,6 +55,7 @@ export const PinnedMessagesBanner = ({ groupId, canPin, livePin, liveUnpinId, on
     if (!liveUnpinId) return;
     setPinned(prev => prev.filter(p => p.id !== liveUnpinId));
   }, [liveUnpinId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleUnpin = async (messageId: string) => {
     try {

@@ -38,6 +38,7 @@ export const PollCard = ({ poll: initialPoll, onUpdate }: Props) => {
 
   // Accept external updates (from socket)
   useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
     setPoll(prev => ({
       ...prev,
       vote_counts: initialPoll.vote_counts,

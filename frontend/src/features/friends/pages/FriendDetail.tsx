@@ -1,5 +1,9 @@
 import { toast } from '../../../shared/store/useToastStore';
+import { EmptyState } from '../../../shared/components/EmptyState';
+import { ExpenseRowSkeleton, ChatMessageSkeleton, Skeleton } from '../../../shared/components/Skeleton';
 import { useState, useEffect, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { motion } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../shared/api/axios';
 import { ExpenseComments } from '../../expenses/components/ExpenseComments';
@@ -18,6 +22,7 @@ import { LinkPreview } from '../../../shared/components/LinkPreview';
 import { VoiceRecorder } from '../../../shared/components/VoiceRecorder';
 import { VoiceMessage } from '../../../shared/components/VoiceMessage';
 import { Mic } from 'lucide-react';
+import { useHotkeys } from 'react-hotkeys-hook';
 
 interface FriendExpense {
   id: string;
@@ -67,6 +72,10 @@ export const FriendDetail = () => {
   const [expenseToEdit, setExpenseToEdit] = useState<FriendExpense | null>(null);
   const [loadingReminders, setLoadingReminders] = useState<Record<string, boolean>>({});
   
+  const [focusedExpenseIndex, setFocusedExpenseIndex] = useState(-1);
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<{ id: string; content: string; senderName: string } | null>(null);
+
   const { toggleMute, isMuted } = useSettingsStore();
   const [showSettings, setShowSettings] = useState(false);
   const muted = id ? isMuted(id) : false;
@@ -75,15 +84,31 @@ export const FriendDetail = () => {
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [presence, setPresence] = useState<{ online: boolean; lastSeen: string | null }>({ online: false, lastSeen: null });
-  const [replyingTo, setReplyingTo] = useState<{ id: string; content: string; senderName: string } | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  // Track isChatOpen in a ref so socket callbacks always see the current value
-  // without needing to re-register listeners on every open/close toggle.
+  const topObserverRef = useRef<HTMLDivElement>(null);
+  const [visibleLimit, setVisibleLimit] = useState(50);
+
   const isChatOpenRef = useRef(isChatOpen);
   useEffect(() => {
     isChatOpenRef.current = isChatOpen;
   }, [isChatOpen]);
+
+  useEffect(() => {
+    if (!isChatOpen || chat.length <= visibleLimit) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setVisibleLimit(prev => Math.min(prev + 50, chat.length));
+      }
+    }, { threshold: 0.1 });
+
+    if (topObserverRef.current) observer.observe(topObserverRef.current);
+    return () => observer.disconnect();
+  }, [isChatOpen, chat.length, visibleLimit]);
+
+  const visibleChat = useMemo(() => {
+    return chat.slice(Math.max(chat.length - visibleLimit, 0));
+  }, [chat, visibleLimit]);
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -91,6 +116,14 @@ export const FriendDetail = () => {
     onConfirm: () => void;
     type?: 'danger' | 'warning' | 'info';
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+
+  const parentRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: detail?.expenses ? detail.expenses.filter(e => expenseTab === 'settled' ? e.is_settled : !e.is_settled).length : 0,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 140,
+    overscan: 5,
+  });
 
   const showConfirm = (title: string, message: string, onConfirm: () => void, type: 'danger' | 'warning' | 'info' = 'info') => {
     setConfirmConfig({ isOpen: true, title, message, onConfirm, type });
@@ -130,7 +163,6 @@ export const FriendDetail = () => {
     };
   }, [id, emit, isConnected]);
 
-  // Mark chat as read when chat panel is opened
   useEffect(() => {
     if (isChatOpen && id) {
       markAsRead('friend', id, 'chat');
@@ -141,12 +173,10 @@ export const FriendDetail = () => {
   useEffect(() => {
     const unsub1 = on('new_message', (msg) => {
       const incoming = msg as ChatMessage;
-      // Deduplicate: message may already be in state from optimistic HTTP response
       setChat(prev => {
         if (prev.some(m => m.id === incoming.id)) return prev;
         return [...prev, incoming];
       });
-      // Only mark as read when the chat panel is open AND the message is from the friend
       if (isChatOpenRef.current && incoming.sender_id === id) {
         emit('mark_read', id);
       }
@@ -159,8 +189,6 @@ export const FriendDetail = () => {
       }
     });
     
-    // Merge (not replace) so fields present in local state but absent in the
-    // raw DB row (e.g. sender_name) are preserved.
     const unsub4 = on('message_edited', (editedMsg: any) => {
       setChat(prev => prev.map(m => m.id === editedMsg.id ? { ...m, ...editedMsg } : m));
     });
@@ -216,6 +244,28 @@ export const FriendDetail = () => {
   };
 
   const handleReactDM = (messageId: string, emoji: string) => {
+    setChat(prev => prev.map(m => {
+      if (m.id === messageId) {
+        const reactions = [...(m.reactions || [])];
+        const existing = reactions.find((r: any) => r.emoji === emoji);
+        
+        if (existing) {
+          const hasReacted = existing.users.some((u: any) => u.id === currentUser?.id);
+          if (hasReacted) {
+             existing.users = existing.users.filter((u: any) => u.id !== currentUser?.id);
+             existing.count -= 1;
+          } else {
+             existing.users.push({ id: currentUser?.id, display_name: currentUser?.displayName || 'You' });
+             existing.count += 1;
+          }
+        } else {
+          reactions.push({ emoji, count: 1, users: [{ id: currentUser?.id, display_name: currentUser?.displayName || 'You' }] });
+        }
+        return { ...m, reactions: reactions.filter((r: any) => r.count > 0) };
+      }
+      return m;
+    }));
+
     emit('react_message', { messageId, messageType: 'dm', emoji, friendId: id });
   };
 
@@ -226,8 +276,6 @@ export const FriendDetail = () => {
     emit('stop_typing', id);
 
     if (editingMessageId) {
-      // Optimistic edit: update local state immediately so there is no visible delay.
-      // The server will confirm via 'message_edited' which merges any server-side fields.
       const trimmed = msgInput.trim();
       setChat(prev => prev.map(m =>
         m.id === editingMessageId ? { ...m, content: trimmed, is_edited: true } : m
@@ -236,9 +284,6 @@ export const FriendDetail = () => {
       setEditingMessageId(null);
       setMsgInput('');
     } else {
-      // Optimistic send: POST to REST; add the returned message object directly
-      // to state. The socket 'new_message' will also fire for the other party;
-      // the deduplication in the listener handles the sender's side.
       try {
         const trimmed = msgInput.trim();
         setMsgInput('');
@@ -271,7 +316,7 @@ export const FriendDetail = () => {
         return [...prev, chatResponse.data as ChatMessage];
       });
       setReplyingTo(null);
-    } catch (err) {
+    } catch {
       toast.error('Failed to send voice note');
     }
   };
@@ -297,15 +342,11 @@ export const FriendDetail = () => {
       `Are you sure you want to delete this message ${forEveryone ? 'for everyone' : 'for yourself'}?`,
       () => {
         if (forEveryone) {
-          // Optimistic: mark as deleted immediately so the sender doesn't wait
-          // for the socket round-trip. The server will confirm via 'message_deleted'.
           setChat(prev => prev.map(m =>
             m.id === msgId ? { ...m, content: '', is_deleted_for_everyone: true } : m
           ));
           emit('delete_message', { messageId: msgId, friendId: id, forEveryone: true });
         } else {
-          // Optimistic: remove from local list immediately.
-          // The server confirms via 'message_deleted_for_me' (no-op if already gone).
           setChat(prev => prev.filter(m => m.id !== msgId));
           emit('delete_message', { messageId: msgId, friendId: id, forEveryone: false });
         }
@@ -404,11 +445,28 @@ export const FriendDetail = () => {
       'Settle Expense',
       `Are you sure you want to settle "${description}"? This will mark it as paid.`,
       async () => {
+        const previousDetail = detail;
+        setDetail(prev => {
+          if (!prev) return prev;
+          const expenseToSettle = prev.expenses.find((e: any) => e.id === expenseId);
+          if (!expenseToSettle) return prev;
+
+          // Rough calculation for optimistic balance:
+          // If we owe them, netBalance is negative. Settling it moves it closer to 0.
+          // In SplitLedger, balance logic can be complex (shares/splits), but for immediate UX, we can just subtract the total expense amount or leave netBalance unchanged and wait for refresh. Let's just adjust netBalance using a rough estimation.
+          // Wait, the easiest way to give feedback is to just update the `is_settled` status immediately and let refreshData handle the precise balance.
+          return {
+            ...prev,
+            expenses: prev.expenses.map((e: any) => e.id === expenseId ? { ...e, is_settled: true } : e)
+          };
+        });
+
         try {
           await apiClient.post(`/expenses/${expenseId}/settle`);
           toast.success('Expense settled!');
           refreshData();
         } catch {
+          setDetail(previousDetail);
           toast.error('Failed to settle expense');
         }
       },
@@ -426,6 +484,38 @@ export const FriendDetail = () => {
     }
   };
 
+  const filteredExpenses = detail?.expenses?.filter((e: any) => expenseTab === 'settled' ? e.is_settled : !e.is_settled) || [];
+
+  useHotkeys('ctrl+s, cmd+s', (e) => {
+    e.preventDefault();
+    handleSettleAll();
+  }, { enableOnFormTags: false }, [detail]);
+
+  useHotkeys('j', () => {
+    setFocusedExpenseIndex(prev => prev < filteredExpenses.length - 1 ? prev + 1 : prev);
+  }, { enableOnFormTags: false }, [filteredExpenses.length]);
+
+  useHotkeys('k', () => {
+    setFocusedExpenseIndex(prev => prev > 0 ? prev - 1 : prev === -1 && filteredExpenses.length > 0 ? 0 : prev);
+  }, { enableOnFormTags: false }, [filteredExpenses.length]);
+
+  useHotkeys('r', () => {
+    if (hoveredMessageId) {
+      const msg = chat.find((m: any) => m.id === hoveredMessageId);
+      if (msg) startReply(msg);
+    }
+  }, { enableOnFormTags: false }, [hoveredMessageId, chat]);
+
+  useHotkeys('e', () => {
+    if (hoveredMessageId) {
+      const msg = chat.find((m: any) => m.id === hoveredMessageId);
+      if (msg && msg.sender_id === currentUser?.id) {
+        startEdit(msg);
+        setReplyingTo(null);
+      }
+    }
+  }, { enableOnFormTags: false }, [hoveredMessageId, chat, currentUser]);
+
   const formatLastSeen = (isoString: string | null) => {
     if (!isoString) return 'Never';
     const date = new Date(isoString);
@@ -442,7 +532,34 @@ export const FriendDetail = () => {
     return `${diffDays}d ago`;
   };
 
-  if (!detail) return <div className="p-8 text-white">Loading...</div>;
+  if (!detail) {
+    return (
+      <div className="flex flex-col h-full bg-black/40 relative w-full shadow-2xl overflow-hidden backdrop-blur-md p-6">
+        <div className="flex items-center gap-4 mb-8">
+          <Skeleton className="w-10 h-10 rounded-full shrink-0" />
+          <div className="flex flex-col gap-2 w-full">
+            <Skeleton className="w-48 h-6 rounded-md" />
+            <Skeleton className="w-32 h-4 rounded-md" />
+          </div>
+        </div>
+        <div className="flex flex-col md:flex-row gap-6 w-full h-full">
+          <div className="flex-1 flex flex-col gap-4 border-r border-white/5 pr-6">
+            <Skeleton className="w-32 h-6 rounded-md mb-2" />
+            <ExpenseRowSkeleton />
+            <ExpenseRowSkeleton />
+            <ExpenseRowSkeleton />
+            <ExpenseRowSkeleton />
+          </div>
+          <div className="flex-1 flex flex-col gap-4 pl-2 justify-end pb-8">
+             <ChatMessageSkeleton />
+             <ChatMessageSkeleton isOwn />
+             <ChatMessageSkeleton />
+             <ChatMessageSkeleton isOwn />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-black/40 relative w-full shadow-2xl overflow-hidden backdrop-blur-md">
@@ -630,87 +747,123 @@ export const FriendDetail = () => {
              )}
            </div>
 
-           {/* Expenses Feed */}
-           <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
-             <div className="flex items-center justify-between mb-4">
-               <h3 className="text-[13px] font-semibold text-zinc-500 uppercase tracking-widest mb-0">Shared History</h3>
-               <div className="flex items-center p-1 bg-white/5 border border-white/10 rounded-lg">
-                 <button 
-                   onClick={() => setExpenseTab('unsettled')}
-                   className={`px-3 py-1.5 rounded-md text-[10px] uppercase tracking-widest font-bold transition-colors ${expenseTab === 'unsettled' ? 'bg-indigo-500 text-white shadow-lg' : 'text-zinc-500 hover:text-white'}`}
-                 >
-                   Unsettled
-                 </button>
-                 <button 
-                   onClick={() => setExpenseTab('settled')}
-                   className={`px-3 py-1.5 rounded-md text-[10px] uppercase tracking-widest font-bold transition-colors ${expenseTab === 'settled' ? 'bg-indigo-500 text-white shadow-lg' : 'text-zinc-500 hover:text-white'}`}
-                 >
-                   Settled
-                 </button>
-               </div>
-             </div>
-             <div className="flex flex-col gap-3">
-               {detail.expenses.length === 0 ? (
-                 <p className="text-sm text-zinc-600">No shared expenses found.</p>
-               ) : (
-                 detail.expenses.filter((e: any) => expenseTab === 'settled' ? e.is_settled : !e.is_settled).map((e: any) => (
-                    <div key={e.id} className={`p-4 rounded-xl border ${e.is_settled ? 'border-emerald-500/20' : 'border-rose-500/20'} bg-white/[0.02] hover:bg-white/[0.04] transition-colors group relative overflow-hidden`}>
-                      <div className={`absolute left-0 top-0 bottom-0 w-1 transition-colors ${e.is_settled ? 'bg-emerald-500/50' : 'bg-rose-500/50'}`} />
-                      <div className="flex justify-between items-start mb-2 pl-1">
-                        <div className="flex flex-col gap-1 pr-4 flex-1">
-                          <h4 className="text-[15px] font-bold text-white leading-tight">{e.description}</h4>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1.5 items-center">
-                            {!e.is_settled && (
-                               <button 
-                                 onClick={() => handleSettleSpecificExpense(e.id, e.description)}
-                                 className="px-2 py-1 bg-emerald-500/20 text-emerald-400 text-[10px] font-bold rounded hover:bg-emerald-500/40 tracking-wide uppercase" 
-                               >
-                                 Settle Up
-                               </button>
-                            )}
-                            <button 
-                              onClick={() => handleRemindExpense(e.id)}
-                              className="p-1.5 bg-indigo-500/20 text-indigo-400 rounded hover:bg-indigo-500/40" 
-                            >
-                              {loadingReminders[e.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
-                            </button>
-                            <button 
-                              onClick={() => { setExpenseToEdit(e); setExpenseModalOpen(true); }}
-                              className="p-1.5 bg-white/10 text-zinc-300 rounded hover:bg-white/20" 
-                            >
-                                <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteExpense(e.id)}
-                              className="p-1.5 bg-rose-500/20 text-rose-400 rounded hover:bg-rose-500/40" 
-                            >
-                                <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                         </div>
-                         <span className="text-[15px] font-bold text-white shrink-0 bg-white/10 px-2 py-0.5 rounded-lg">₹{e.amount}</span>
+            {/* Expenses Feed */}
+            <div ref={parentRef} className="flex-1 overflow-y-auto custom-scrollbar p-6 relative">
+              <div className="flex items-center justify-between mb-4 sticky top-0 bg-[#0c0c0e]/90 backdrop-blur-md z-10 py-2">
+                <h3 className="text-[13px] font-semibold text-zinc-500 uppercase tracking-widest mb-0">Shared History</h3>
+                <div className="flex items-center p-1 bg-white/5 border border-white/10 rounded-lg">
+                  <button 
+                    onClick={() => setExpenseTab('unsettled')}
+                    className={`px-3 py-1.5 rounded-md text-[10px] uppercase tracking-widest font-bold transition-colors ${expenseTab === 'unsettled' ? 'bg-indigo-500 text-white shadow-lg' : 'text-zinc-500 hover:text-white'}`}
+                  >
+                    Unsettled
+                  </button>
+                  <button 
+                    onClick={() => setExpenseTab('settled')}
+                    className={`px-3 py-1.5 rounded-md text-[10px] uppercase tracking-widest font-bold transition-colors ${expenseTab === 'settled' ? 'bg-indigo-500 text-white shadow-lg' : 'text-zinc-500 hover:text-white'}`}
+                  >
+                    Settled
+                  </button>
+                </div>
+              </div>
+              
+              {filteredExpenses.length === 0 ? (
+                 <EmptyState
+                   variant="expenses"
+                   headline={expenseTab === 'settled' ? 'No settled expenses' : 'No shared expenses yet'}
+                   subtext={expenseTab === 'settled' ? 'Expenses you settle with this friend will appear here.' : 'Add your first expense together to start tracking balances.'}
+                   ctaLabel={expenseTab !== 'settled' ? 'Add First Expense' : undefined}
+                   onCta={expenseTab !== 'settled' ? () => setExpenseModalOpen(true) : undefined}
+                   compact
+                 />
+              ) : (
+                 <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+                   {virtualizer.getVirtualItems().map((virtualRow) => {
+                     const e = filteredExpenses[virtualRow.index];
+                     const idx = virtualRow.index;
+                     return (
+                       <div
+                         key={virtualRow.key}
+                         data-index={virtualRow.index}
+                         ref={virtualizer.measureElement}
+                         style={{
+                           position: 'absolute',
+                           top: 0,
+                           left: 0,
+                           width: '100%',
+                           transform: `translateY(${virtualRow.start}px)`,
+                           paddingBottom: '12px'
+                         }}
+                       >
+                         <motion.div 
+                           drag="x"
+                           dragConstraints={{ left: 0, right: 0 }}
+                           dragElastic={{ left: 0.2, right: 0 }}
+                           onDragEnd={(_event, { offset }) => {
+                             if (offset.x < -80 && !e.is_settled) {
+                               handleSettleSpecificExpense(e.id, e.description);
+                             }
+                           }}
+                           className={`p-4 rounded-xl border ${e.is_settled ? 'border-emerald-500/20' : 'border-rose-500/20'} ${idx === focusedExpenseIndex ? 'ring-2 ring-amber-500 bg-white/[0.06]' : 'bg-white/[0.02] hover:bg-white/[0.04]'} transition-all group relative overflow-hidden`}
+                         >
+                           <div className={`absolute left-0 top-0 bottom-0 w-1 transition-colors ${e.is_settled ? 'bg-emerald-500/50' : 'bg-rose-500/50'}`} />
+                           <div className="flex justify-between items-start mb-2 pl-1">
+                             <div className="flex flex-col gap-1 pr-4 flex-1">
+                               <h4 className="text-[15px] font-bold text-white leading-tight">{e.description}</h4>
+                             </div>
+                             <div className="flex items-center gap-2 shrink-0">
+                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1.5 items-center">
+                                 {!e.is_settled && (
+                                    <button 
+                                      onClick={() => handleSettleSpecificExpense(e.id, e.description)}
+                                      className="px-2 py-1 bg-emerald-500/20 text-emerald-400 text-[10px] font-bold rounded hover:bg-emerald-500/40 tracking-wide uppercase" 
+                                    >
+                                      Settle Up
+                                    </button>
+                                 )}
+                                 <button 
+                                   onClick={() => handleRemindExpense(e.id)}
+                                   className="p-1.5 bg-indigo-500/20 text-indigo-400 rounded hover:bg-indigo-500/40" 
+                                 >
+                                   {loadingReminders[e.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
+                                 </button>
+                                 <button 
+                                   onClick={() => { setExpenseToEdit(e); setExpenseModalOpen(true); }}
+                                   className="p-1.5 bg-white/10 text-zinc-300 rounded hover:bg-white/20" 
+                                 >
+                                     <Edit2 className="w-3.5 h-3.5" />
+                                 </button>
+                                 <button 
+                                   onClick={() => handleDeleteExpense(e.id)}
+                                   className="p-1.5 bg-rose-500/20 text-rose-400 rounded hover:bg-rose-500/40" 
+                                 >
+                                     <Trash2 className="w-3.5 h-3.5" />
+                                 </button>
+                              </div>
+                              <span className="text-[15px] font-bold text-white shrink-0 bg-white/10 px-2 py-0.5 rounded-lg">₹{e.amount}</span>
+                            </div>
+                          </div>
+                          <div className="flex justify-between items-center text-[12px] text-zinc-500">
+                            <div className="flex flex-col">
+                              <span>{new Date(e.created_at).toLocaleDateString()}</span>
+                              {e.due_date && <span className="text-amber-500/80 mt-0.5">Due: {new Date(e.due_date).toLocaleDateString()}</span>}
+                            </div>
+                            <span>Paid by {e.paid_by_name || 'You'}</span>
+                          </div>
+                          <ExpenseComments expenseId={e.id} />
+                          <ExpenseAttachments expenseId={e.id} />
+                         </motion.div>
                        </div>
-                     </div>
-                     <div className="flex justify-between items-center text-[12px] text-zinc-500">
-                       <div className="flex flex-col">
-                         <span>{new Date(e.created_at).toLocaleDateString()}</span>
-                         {e.due_date && <span className="text-amber-500/80 mt-0.5">Due: {new Date(e.due_date).toLocaleDateString()}</span>}
-                       </div>
-                       <span>Paid by {e.paid_by_name || 'You'}</span>
-                     </div>
-                     <ExpenseComments expenseId={e.id} />
-                     <ExpenseAttachments expenseId={e.id} />
-                   </div>
-                 ))
-               )}
-             </div>
-           </div>
-         </div>
+                     );
+                   })}
+                 </div>
+              )}
+            </div>
+          </div>
 
          {/* RIGHT: Real-Time Chat */}
          {isChatOpen && (
-           <div className="w-1/2 absolute right-0 top-0 bottom-0 bg-black/90 backdrop-blur-xl border-l border-white/10 shadow-2xl flex flex-col z-40">
+           <div className="w-full md:w-1/2 absolute right-0 top-0 bottom-0 bg-black/90 backdrop-blur-xl border-l border-white/10 shadow-2xl flex flex-col z-40">
              <div className="p-4 border-b border-white/5 flex justify-between items-center shadow-sm z-10">
                <span className="text-[13px] font-semibold text-zinc-500 uppercase tracking-widest">
                  Direct Messages
@@ -721,89 +874,112 @@ export const FriendDetail = () => {
              </div>
              
              <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
-               {chat.length === 0 ? (
-                 <div className="h-full flex flex-col justify-center items-center text-zinc-500">
-                   <span className="text-2xl mb-3">💬</span>
-                   <p className="text-sm font-medium">Say hello!</p>
-                 </div>
-               ) : (
-                 chat.map((msg: any) => {
-                   const isMe = msg.sender_id !== id;
-                   const isDeleted = msg.is_deleted_for_everyone;
-                   
-                   return (
-                      <div id={`msg-${msg.id}`} key={msg.id} className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'} group/msg transition-all duration-300`}>
-                        <div className={`px-4 py-2.5 rounded-2xl max-w-[80%] text-[14px] flex flex-col relative ${isDeleted ? 'bg-white/5 border border-white/10 text-zinc-500 italic' : isMe ? 'bg-amber-500 text-black rounded-br-sm font-medium shadow-md shadow-amber-500/10' : 'bg-white/10 text-white rounded-bl-sm border border-white/10'}`}>
-                          
-                          {!isDeleted && msg.reply_to_content && (
-                            <ReplyQuote
-                              senderName={msg.reply_to_sender_name || 'Unknown'}
-                              content={msg.reply_to_content}
-                              messageId={msg.reply_to_id}
-                              compact
-                            />
-                          )}       
-                         {isDeleted ? (
-                            <span className="flex items-center gap-1.5"><Trash2 className="w-3.5 h-3.5 opacity-50" /> This message was deleted</span>
-                         ) : (
-                            <div className="flex flex-col">
-                              {msg.attachment_type === 'voice' && msg.attachment_url ? (
-                                <VoiceMessage url={msg.attachment_url} />
-                              ) : (
-                                <span>{msg.content}</span>
-                              )}
-                              <div className="flex justify-end items-center gap-1 mt-1 -mb-1 opacity-70">
-                                {msg.is_edited && <span className="text-[9px] font-bold tracking-widest uppercase mr-1">Edited</span>}
-                                <span className="text-[9px]">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                {isMe && (
-                                  <div className="flex items-center">
-                                    {msg.is_read ? <CheckCheck className="w-3 h-3 text-indigo-600" /> : msg.is_delivered ? <CheckCheck className="w-3 h-3 text-black/40" /> : <Check className="w-3 h-3 text-black/40" />}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                         )}
-
-                         {!isDeleted && msg.link_preview && msg.link_preview.url && (
-                           <div className="mt-1 w-full max-w-sm">
-                             <LinkPreview preview={msg.link_preview} />
-                           </div>
-                         )}
-
-                         {/* Context Menu Toggle */}
-                         {isMe && !isDeleted && (
-                           <button 
-                             onClick={() => setActiveMenuId(activeMenuId === msg.id ? null : msg.id)}
-                             className={`absolute top-2 -left-8 p-1 rounded-full bg-white/10 text-white opacity-0 group-hover/msg:opacity-100 transition-opacity ${activeMenuId === msg.id ? 'opacity-100' : ''}`}
-                           >
-                             <MoreVertical className="w-4 h-4" />
-                           </button>
-                         )}
-
-                         {/* Context Menu Dropdown */}
-                         {activeMenuId === msg.id && (
-                           <div className="absolute top-10 -left-32 w-36 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl py-1 z-50 animate-in fade-in zoom-in duration-200">
-                             {isMe && <button onClick={() => startEdit(msg)} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"><Edit2 className="w-3.5 h-3.5" /> Edit</button>}
-                             <button onClick={() => startReply(msg)} className="w-full text-left px-4 py-2 text-sm text-amber-400 hover:bg-white/10 flex items-center gap-2"><CornerUpLeft className="w-3.5 h-3.5" /> Reply</button>
-                             <button onClick={() => deleteMessage(msg.id, false)} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"><Trash2 className="w-3.5 h-3.5" /> Delete for me</button>
-                             <button onClick={() => deleteMessage(msg.id, true)} className="w-full text-left px-4 py-2 text-sm text-rose-400 hover:bg-white/10 flex items-center gap-2"><Trash2 className="w-3.5 h-3.5" /> Delete for everyone</button>
-                           </div>
-                         )}
-                        </div>
-                        {!isDeleted && (
-                          <MessageReactions
-                            messageId={msg.id}
-                            messageType="dm"
-                            reactions={msg.reactions || []}
-                            currentUserId={currentUser?.id || ''}
-                            onReact={handleReactDM}
-                            isMe={isMe}
-                          />
-                        )}
+                {chat.length === 0 ? (
+                  <div className="h-full flex flex-col justify-center items-center text-zinc-500">
+                    <span className="text-2xl mb-3">💬</span>
+                    <p className="text-sm font-medium">Say hello!</p>
+                  </div>
+                ) : (
+                  <>
+                    {chat.length > visibleLimit && (
+                      <div ref={topObserverRef} className="w-full py-4 flex justify-center">
+                        <Loader2 className="w-5 h-5 text-zinc-500 animate-spin" />
                       </div>
-                    );
-                  })
-               )}
+                    )}
+                    {visibleChat.map((msg: any) => {
+                      const isMe = msg.sender_id === currentUser?.id;
+                      const isDeleted = msg.is_deleted_for_everyone;
+                      
+                      return (
+                        <div 
+                          id={`msg-${msg.id}`} 
+                          key={msg.id} 
+                          onMouseEnter={() => setHoveredMessageId(msg.id)}
+                          onMouseLeave={() => setHoveredMessageId(null)}
+                          className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'} group/msg transition-all duration-300 ${hoveredMessageId === msg.id ? 'ring-1 ring-white/10 rounded-2xl p-1' : ''}`}
+                        >
+                          <motion.div 
+                            drag="x"
+                            dragConstraints={{ left: 0, right: 0 }}
+                            dragElastic={{ right: 0.2, left: 0 }}
+                            onDragEnd={(_e, { offset }) => {
+                              if (offset.x > 50 && !isDeleted) {
+                                startReply(msg);
+                              }
+                            }}
+                            className={`px-4 py-2.5 rounded-2xl max-w-[80%] text-[14px] flex flex-col relative ${isDeleted ? 'bg-white/5 border border-white/10 text-zinc-500 italic' : isMe ? 'bg-amber-500 text-black rounded-br-sm font-medium shadow-md shadow-amber-500/10' : 'bg-white/10 text-white rounded-bl-sm border border-white/10'}`}
+                          >
+                            
+                            {!isDeleted && msg.reply_to_content && (
+                              <ReplyQuote
+                                senderName={msg.reply_to_sender_name || 'Unknown'}
+                                content={msg.reply_to_content}
+                                messageId={msg.reply_to_id}
+                                compact
+                              />
+                            )}       
+                          {isDeleted ? (
+                              <span className="flex items-center gap-1.5"><Trash2 className="w-3.5 h-3.5 opacity-50" /> This message was deleted</span>
+                          ) : (
+                              <div className="flex flex-col">
+                                {msg.attachment_type === 'voice' && msg.attachment_url ? (
+                                  <VoiceMessage url={msg.attachment_url} />
+                                ) : (
+                                  <span>{msg.content}</span>
+                                )}
+                                <div className="flex justify-end items-center gap-1 mt-1 -mb-1 opacity-70">
+                                  {msg.is_edited && <span className="text-[9px] font-bold tracking-widest uppercase mr-1">Edited</span>}
+                                  <span className="text-[9px]">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                  {isMe && (
+                                    <div className="flex items-center">
+                                      {msg.is_read ? <CheckCheck className="w-3 h-3 text-indigo-600" /> : msg.is_delivered ? <CheckCheck className="w-3 h-3 text-black/40" /> : <Check className="w-3 h-3 text-black/40" />}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                          )}
+
+                          {!isDeleted && msg.link_preview && msg.link_preview.url && (
+                            <div className="mt-1 w-full max-w-sm">
+                              <LinkPreview preview={msg.link_preview} />
+                            </div>
+                          )}
+
+                          {/* Context Menu Toggle */}
+                          {isMe && !isDeleted && (
+                            <button 
+                              onClick={() => setActiveMenuId(activeMenuId === msg.id ? null : msg.id)}
+                              className={`absolute top-2 -left-8 p-1 rounded-full bg-white/10 text-white opacity-0 group-hover/msg:opacity-100 transition-opacity ${activeMenuId === msg.id ? 'opacity-100' : ''}`}
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                          )}
+
+                          {/* Context Menu Dropdown */}
+                          {activeMenuId === msg.id && (
+                            <div className="absolute top-10 -left-32 w-36 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl py-1 z-50 animate-in fade-in zoom-in duration-200">
+                              {isMe && <button onClick={() => startEdit(msg)} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"><Edit2 className="w-3.5 h-3.5" /> Edit</button>}
+                              <button onClick={() => startReply(msg)} className="w-full text-left px-4 py-2 text-sm text-amber-400 hover:bg-white/10 flex items-center gap-2"><CornerUpLeft className="w-3.5 h-3.5" /> Reply</button>
+                              <button onClick={() => deleteMessage(msg.id, false)} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2"><Trash2 className="w-3.5 h-3.5" /> Delete for me</button>
+                              <button onClick={() => deleteMessage(msg.id, true)} className="w-full text-left px-4 py-2 text-sm text-rose-400 hover:bg-white/10 flex items-center gap-2"><Trash2 className="w-3.5 h-3.5" /> Delete for everyone</button>
+                            </div>
+                          )}
+                          </motion.div>
+                          {!isDeleted && (
+                            <MessageReactions
+                              messageId={msg.id}
+                              messageType="dm"
+                              reactions={msg.reactions || []}
+                              currentUserId={currentUser?.id || ''}
+                              onReact={handleReactDM}
+                              isMe={isMe}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
                {isTyping && (
                  <div className="flex items-center gap-2 mt-2">
                    <div className="flex gap-1 animate-pulse">
@@ -890,6 +1066,24 @@ export const FriendDetail = () => {
           { id: detail.friend.id, display_name: detail.friend.display_name },
           { id: currentUser?.id, display_name: 'You' }
         ]} 
+        onOptimisticSubmit={(newExpense) => {
+          setDetail(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              expenses: [newExpense, ...prev.expenses]
+            };
+          });
+        }}
+        onRevert={(tempId) => {
+          setDetail(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              expenses: prev.expenses.filter((e: any) => e.id !== tempId)
+            };
+          });
+        }}
       />
 
       <ConfirmModal 

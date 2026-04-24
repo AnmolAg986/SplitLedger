@@ -8,6 +8,7 @@ import { DashboardWidgets } from '../components/DashboardWidgets';
 import { BudgetWidgets } from '../components/BudgetWidgets';
 import { NetPositionSection } from '../components/NetPositionSection';
 import { CreateExpenseModal } from '../../../shared/components/CreateExpenseModal';
+import { DashboardWidgetSkeleton, ListCardSkeleton, Skeleton } from '../../../shared/components/Skeleton';
 
 interface PersonBalance {
   user_id: string;
@@ -75,8 +76,15 @@ export const Dashboard = () => {
   // Don't render the main content until we have real data
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto p-6 md:p-8 relative z-10 font-sans h-full flex flex-col items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+      <div className="max-w-6xl mx-auto p-6 md:p-8 relative z-10 font-sans h-full flex flex-col overflow-y-auto custom-scrollbar gap-8">
+        <Skeleton className="w-64 h-10 rounded-lg mb-4" />
+        <ListCardSkeleton />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 w-full">
+          <DashboardWidgetSkeleton />
+          <DashboardWidgetSkeleton />
+          <DashboardWidgetSkeleton />
+          <DashboardWidgetSkeleton />
+        </div>
       </div>
     );
   }

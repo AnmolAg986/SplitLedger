@@ -34,6 +34,7 @@ export const BudgetWidgets: React.FC<{ refreshTrigger: number }> = ({ refreshTri
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchBudgets();
   }, [refreshTrigger]);
 
@@ -52,7 +53,7 @@ export const BudgetWidgets: React.FC<{ refreshTrigger: number }> = ({ refreshTri
       setAmount('');
       setCategory('');
       fetchBudgets();
-    } catch (err) {
+    } catch {
       toast.error('Failed to create budget');
     }
   };
@@ -62,7 +63,7 @@ export const BudgetWidgets: React.FC<{ refreshTrigger: number }> = ({ refreshTri
       await apiClient.delete(`/budgets/${id}`);
       toast.success('Budget removed');
       fetchBudgets();
-    } catch (err) {
+    } catch {
       toast.error('Failed to remove budget');
     }
   };

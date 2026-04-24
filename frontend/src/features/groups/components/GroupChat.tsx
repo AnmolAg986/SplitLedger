@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
+import { ChatMessageSkeleton } from '../../../shared/components/Skeleton';
 import { Send, MessageSquare, X, Check, CheckCheck, MoreVertical, Edit2, Trash2 } from 'lucide-react';
 import { useSocket } from '../../../shared/hooks/useSocket';
 import { useAuthStore } from '../../../app/store/useAuthStore';
@@ -15,6 +17,7 @@ import { LinkPreview } from '../../../shared/components/LinkPreview';
 import { VoiceRecorder } from '../../../shared/components/VoiceRecorder';
 import { VoiceMessage } from '../../../shared/components/VoiceMessage';
 import { CornerUpLeft, Mic } from 'lucide-react';
+import { useHotkeys } from 'react-hotkeys-hook';
 
 interface GroupChatProps {
   groupId: string;
@@ -26,11 +29,15 @@ interface GroupChatProps {
 export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [chat, setChat] = useState<any[]>([]);
+  const [loadingChat, setLoadingChat] = useState(false);
   const [input, setInput] = useState('');
   const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<{ id: string; content: string; senderName: string } | null>(null);
+  
+  const [visibleLimit, setVisibleLimit] = useState(50);
+  const topObserverRef = useRef<HTMLDivElement>(null);
   const [isRecording, setIsRecording] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -48,6 +55,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
   const [polls, setPolls] = useState<Record<string, PollData>>({});
   const [livePin, setLivePin] = useState<any>(null);
   const [liveUnpinId, setLiveUnpinId] = useState<string | null>(null);
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+
 
   const showConfirm = (title: string, message: string, onConfirm: () => void, type: 'danger' | 'warning' | 'info' = 'info') => {
     setConfirmConfig({ isOpen: true, title, message, onConfirm, type });
@@ -59,9 +68,11 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
       emit('mark_group_delivered', groupId);
       markAsRead('group', groupId, 'chat');
       
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoadingChat(true);
       apiClient.get(`/chat/group/${groupId}`).then(res => {
         setChat(res.data);
-      }).catch(console.error);
+      }).catch(console.error).finally(() => setLoadingChat(false));
     } else if (!isOpen && isConnected) {
       emit('leave_group_room', groupId);
     }
@@ -71,23 +82,36 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
   }, [isOpen, groupId, emit, isConnected]);
 
   useEffect(() => {
+    if (!isOpen || chat.length <= visibleLimit) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setVisibleLimit(prev => Math.min(prev + 50, chat.length));
+      }
+    }, { threshold: 0.1 });
+
+    if (topObserverRef.current) observer.observe(topObserverRef.current);
+    return () => observer.disconnect();
+  }, [isOpen, chat.length, visibleLimit]);
+
+  const visibleChat = useMemo(() => {
+    return chat.slice(Math.max(chat.length - visibleLimit, 0));
+  }, [chat, visibleLimit]);
+
+  useEffect(() => {
     if (!isOpen) return;
     
     const unsub1 = on('new_group_message', (msg: any) => {
       setChat(prev => {
-        // Replace the optimistic temp message sent by the current user,
-        // or deduplicate if the real message is already present.
         const tempIdx = prev.findIndex(
           m => typeof m.id === 'string' && m.id.startsWith('temp_') &&
                m.sender_id === msg.sender_id && m.content === msg.content
         );
         if (tempIdx >= 0) {
-          // Swap the temp placeholder for the real server message
           const updated = [...prev];
           updated[tempIdx] = msg;
           return updated;
         }
-        if (prev.some(m => m.id === msg.id)) return prev; // already present
+        if (prev.some(m => m.id === msg.id)) return prev;
         return [...prev, msg];
       });
       emit('mark_group_read', groupId);
@@ -108,8 +132,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
         return next;
       });
     });
-    // Merge (not replace) so fields present only in local state (e.g. sender_name)
-    // are preserved after the server confirms the edit.
     const unsub4 = on('group_message_edited', (editedMsg: any) => {
       setChat(prev => prev.map(m => m.id === editedMsg.id ? { ...m, ...editedMsg } : m));
     });
@@ -122,7 +144,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
     const unsub7 = on('group_message_delivered', (data: any) => {
       if (data.groupId === groupId) {
         setChat(prev => prev.map(m => {
-          // Create a new array — never mutate the existing array in React state
           const dt = [...(m.delivered_to || [])];
           if (!dt.includes(data.deliveredTo)) dt.push(data.deliveredTo);
           return { ...m, delivered_to: dt };
@@ -132,7 +153,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
     const unsub8 = on('group_message_read', (data: any) => {
       if (data.groupId === groupId) {
         setChat(prev => prev.map(m => {
-          // Create a new array — never mutate the existing array in React state
           const rb = [...(m.read_by || [])];
           if (!rb.includes(data.readBy)) rb.push(data.readBy);
           return { ...m, read_by: rb };
@@ -206,7 +226,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
 
     const trimmed = input.trim();
 
-    // /poll slash command: /poll Question? | Option A | Option B | ...
     if (trimmed.startsWith('/poll ')) {
       const parts = trimmed.slice(6).split('|').map(s => s.trim()).filter(Boolean);
       const question = parts[0];
@@ -227,15 +246,12 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
     }
 
     if (editingMessageId) {
-      // Optimistic edit: reflect the change immediately without waiting for server
       setChat(prev => prev.map(m =>
         m.id === editingMessageId ? { ...m, content: trimmed, is_edited: true } : m
       ));
       emit('edit_group_message', { messageId: editingMessageId, groupId, content: trimmed });
       setEditingMessageId(null);
     } else {
-      // Optimistic send: create a temp message so the sender sees it instantly.
-      // The 'new_group_message' handler replaces it with the real server message.
       const tempMsg = {
         id: `temp_${Date.now()}`,
         sender_id: currentUser?.id,
@@ -269,7 +285,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
       
       emit('send_group_message', { groupId, content: '', replyToId: replyingTo?.id, attachmentUrl, attachmentType });
       setReplyingTo(null);
-    } catch (err) {
+    } catch {
       toast.error('Failed to send voice note');
     }
   };
@@ -288,7 +304,45 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
     setActiveMenuId(null);
   };
 
+  useHotkeys('r', () => {
+    if (hoveredMessageId && isOpen) {
+      const msg = chat.find((m: any) => m.id === hoveredMessageId);
+      if (msg) startReply(msg);
+    }
+  }, { enableOnFormTags: false }, [hoveredMessageId, chat, isOpen]);
+
+  useHotkeys('e', () => {
+    if (hoveredMessageId && isOpen) {
+      const msg = chat.find((m: any) => m.id === hoveredMessageId);
+      if (msg && msg.sender_id === currentUser?.id) {
+        startEdit(msg);
+      }
+    }
+  }, { enableOnFormTags: false }, [hoveredMessageId, chat, currentUser, isOpen]);
+
   const handleReact = (messageId: string, emoji: string) => {
+    setChat(prev => prev.map(m => {
+      if (m.id === messageId) {
+        const reactions = [...(m.reactions || [])];
+        const existing = reactions.find((r: any) => r.emoji === emoji);
+        
+        if (existing) {
+          const hasReacted = existing.users.some((u: any) => u.id === currentUser?.id);
+          if (hasReacted) {
+             existing.users = existing.users.filter((u: any) => u.id !== currentUser?.id);
+             existing.count -= 1;
+          } else {
+             existing.users.push({ id: currentUser?.id, display_name: currentUser?.displayName || 'You' });
+             existing.count += 1;
+          }
+        } else {
+          reactions.push({ emoji, count: 1, users: [{ id: currentUser?.id, display_name: currentUser?.displayName || 'You' }] });
+        }
+        return { ...m, reactions: reactions.filter((r: any) => r.count > 0) };
+      }
+      return m;
+    }));
+
     emit('react_message', { messageId, messageType: 'group', emoji, groupId });
   };
 
@@ -299,15 +353,11 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
       `Are you sure you want to delete this message ${forEveryone ? 'for everyone' : 'for yourself'}?`,
       () => {
         if (forEveryone) {
-          // Optimistic: mark as deleted immediately so the sender doesn't wait
-          // for the socket round-trip. The server confirms via 'group_message_deleted'.
           setChat(prev => prev.map(m =>
             m.id === msgId ? { ...m, content: '', is_deleted_for_everyone: true } : m
           ));
           emit('delete_group_message', { messageId: msgId, groupId, forEveryone: true });
         } else {
-          // Optimistic: remove from local list immediately.
-          // The server confirms via 'group_message_deleted_for_me' (no-op if already gone).
           setChat(prev => prev.filter(m => m.id !== msgId));
           emit('delete_group_message', { messageId: msgId, groupId, forEveryone: false });
         }
@@ -336,12 +386,11 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
 
   return (
     <>
-      {/* Backdrop — click to close */}
       <div
         className="fixed inset-0 bg-black/40 z-[59]"
         onClick={() => setIsOpen(false)}
       />
-      <div className="fixed right-0 top-0 bottom-0 w-1/2 bg-black/90 backdrop-blur-xl border-l border-white/10 shadow-2xl flex flex-col z-[60] overflow-hidden">
+      <div className="fixed right-0 top-0 bottom-0 w-full md:w-1/2 bg-black/90 backdrop-blur-xl border-l border-white/10 shadow-2xl flex flex-col z-[60] overflow-hidden">
         <div className="p-4 border-b border-white/5 flex justify-between items-center shadow-sm z-10 bg-black/50">
           <span className="text-[13px] font-semibold text-zinc-500 uppercase tracking-widest">
             Group Chat
@@ -351,7 +400,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
           </button>
         </div>
 
-        {/* Pinned messages banner — sits between header and message list */}
         <PinnedMessagesBanner
           groupId={groupId}
           canPin={canPin}
@@ -361,31 +409,60 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
         />
 
       <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 custom-scrollbar">
-        {chat.length === 0 && (
+        {loadingChat ? (
+          <div className="flex flex-col gap-4 w-full h-full justify-end">
+            <ChatMessageSkeleton />
+            <ChatMessageSkeleton isOwn />
+            <ChatMessageSkeleton />
+            <ChatMessageSkeleton isOwn />
+            <ChatMessageSkeleton isOwn />
+          </div>
+        ) : chat.length === 0 ? (
           <div className="h-full flex flex-col justify-center items-center text-zinc-500">
             <span className="text-2xl mb-3">💬</span>
             <p className="text-sm font-medium">Start the conversation!</p>
           </div>
-        )}
-        {chat.map(msg => {
-          const isMe = msg.sender_id === currentUser?.id;
-          const isDeleted = msg.is_deleted_for_everyone;
-
-          // Render poll cards injected via socket (poll_id tag on message or stored in polls map)
-          if (msg.poll_id && polls[msg.poll_id]) {
-            return (
-              <div key={msg.id} className="w-full max-w-sm mx-auto">
-                <PollCard
-                  poll={polls[msg.poll_id]}
-                  onUpdate={updated => setPolls(prev => ({ ...prev, [updated.id]: updated }))}
-                />
+        ) : (
+          <>
+            {chat.length > visibleLimit && (
+              <div ref={topObserverRef} className="w-full py-4 flex justify-center">
+                <Loader2 className="w-5 h-5 text-zinc-500 animate-spin" />
               </div>
-            );
-          }
-          
-          return (
-            <div id={`msg-${msg.id}`} key={msg.id} className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'} group/msg transition-all duration-300`}>
-              <div className={`px-4 py-2.5 text-[14px] flex flex-col relative rounded-2xl max-w-[80%] ${isDeleted ? 'bg-white/5 border border-white/10 text-zinc-500 italic' : isMe ? 'bg-indigo-500 text-white rounded-br-sm font-medium shadow-md shadow-indigo-500/10' : 'bg-white/10 text-white rounded-bl-sm border border-white/10'}`}>
+            )}
+            {visibleChat.map((msg) => {
+              const isMe = msg.sender_id === currentUser?.id;
+              const isDeleted = msg.is_deleted_for_everyone;
+
+              if (msg.poll_id && polls[msg.poll_id]) {
+                return (
+                  <div key={msg.id} className="w-full max-w-sm mx-auto">
+                    <PollCard
+                      poll={polls[msg.poll_id]}
+                      onUpdate={updated => setPolls(prev => ({ ...prev, [updated.id]: updated }))}
+                    />
+                  </div>
+                );
+              }
+              
+              return (
+            <div 
+              id={`msg-${msg.id}`} 
+              key={msg.id} 
+              onMouseEnter={() => setHoveredMessageId(msg.id)}
+              onMouseLeave={() => setHoveredMessageId(null)}
+              className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'} group/msg transition-all duration-300 ${hoveredMessageId === msg.id ? 'ring-1 ring-white/10 rounded-2xl p-1' : ''}`}
+            >
+              <motion.div 
+                drag="x"
+                dragConstraints={{ left: 0, right: 0 }}
+                dragElastic={{ right: 0.2, left: 0 }}
+                onDragEnd={(_e, { offset }) => {
+                  if (offset.x > 50 && !isDeleted) {
+                    startReply(msg);
+                  }
+                }}
+                className={`px-4 py-2.5 rounded-2xl max-w-[80%] text-[14px] flex flex-col relative ${isDeleted ? 'bg-white/5 border border-white/10 text-zinc-500 italic' : isMe ? 'bg-indigo-500 text-white rounded-br-sm shadow-md shadow-indigo-500/20' : 'bg-white/10 text-white rounded-bl-sm border border-white/10'}`}
+              >
                 
                 {!isDeleted && msg.reply_to_content && (
                   <ReplyQuote
@@ -482,7 +559,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
                     <button onClick={() => deleteMessage(msg.id, true)} className="w-full text-left px-4 py-2 text-sm text-rose-400 hover:bg-white/10 flex items-center gap-2"><Trash2 className="w-3.5 h-3.5" /> Delete for everyone</button>
                   </div>
                 )}
-              </div>
+              </motion.div>
               {!isDeleted && (
                 <MessageReactions
                   messageId={msg.id}
@@ -496,6 +573,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
             </div>
           );
         })}
+        </>
+        )}
         {typingUsers.size > 0 && (() => {
           const names = Array.from(typingUsers.values());
           const label = names.length === 1
@@ -514,7 +593,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, members, canPin =
             </div>
           );
         })()}
-        <div ref={chatEndRef} />
+        <div ref={chatEndRef} className="h-2" />
       </div>
 
       <div className="p-4 border-t border-white/10 bg-black/30 backdrop-blur-sm z-10">

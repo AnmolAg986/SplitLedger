@@ -1,9 +1,10 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useAuthStore } from '../../../app/store/useAuthStore';
 import { apiClient } from '../../../shared/api/axios';
 import { toast } from '../../../shared/store/useToastStore';
-import { Camera, Loader2, Save, User } from 'lucide-react';
+import { Camera, Loader2, Save, Moon, Sun, Monitor } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useThemeStore } from '../../../shared/store/useThemeStore';
 export const Profile = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
@@ -15,6 +16,7 @@ export const Profile = () => {
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
+  const { theme, setTheme } = useThemeStore();
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
@@ -66,14 +68,14 @@ export const Profile = () => {
   };
 
   return (
-    <div className="p-8 h-full overflow-y-auto custom-scrollbar relative">
+    <div className="p-8 h-full overflow-y-auto custom-scrollbar relative bg-gray-50 dark:bg-transparent transition-colors duration-300">
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[120px] pointer-events-none" />
       
       <div className="max-w-2xl mx-auto mt-10 relative z-10">
-        <h1 className="text-3xl font-bold text-white mb-2">Your Profile</h1>
-        <p className="text-zinc-400 mb-8">Manage your personal information and profile picture.</p>
+        <h1 className="text-3xl font-bold text-zinc-900 dark:text-white mb-2 transition-colors">Your Profile</h1>
+        <p className="text-zinc-500 dark:text-zinc-400 mb-8 transition-colors">Manage your personal information, theme, and profile picture.</p>
 
-        <div className="bg-[#0c0c0e] border border-white/10 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+        <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-white/10 rounded-3xl p-8 shadow-xl dark:shadow-2xl relative overflow-hidden transition-colors">
           <div className="flex flex-col md:flex-row gap-10 items-start">
             
             {/* Avatar Section */}
@@ -131,33 +133,45 @@ export const Profile = () => {
 
             {/* Form Section */}
             <div className="flex-1 w-full space-y-6">
-              <div>
-                <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Display Name</label>
-                <div className="relative">
-                  <User className="absolute left-4 top-3.5 w-5 h-5 text-zinc-500" />
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Display Name</label>
                   <input 
-                    type="text"
+                    type="text" 
                     value={displayName}
-                    onChange={e => setDisplayName(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 text-white focus:outline-none focus:border-cyan-500/50 transition-colors"
-                    placeholder="Your name"
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="w-full bg-zinc-50 dark:bg-black/50 border border-zinc-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-zinc-900 dark:text-white focus:outline-none focus:border-cyan-500 transition-colors"
                   />
                 </div>
-              </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Username</label>
+                  <div className="relative flex items-center bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 rounded-xl overflow-hidden focus-within:border-cyan-500/50 transition-colors">
+                    <div className="pl-4 pr-2 text-zinc-500 font-medium">splitledger.app/u/</div>
+                    <input 
+                      type="text"
+                      value={username}
+                      onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                      className="w-full bg-transparent py-3 pr-4 text-zinc-900 dark:text-white focus:outline-none placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
+                      placeholder="username"
+                    />
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-1.5 ml-1">Optional. Must be unique and contain only letters, numbers, and underscores.</p>
+                </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Username</label>
-                <div className="relative flex items-center bg-white/5 border border-white/10 rounded-xl overflow-hidden focus-within:border-cyan-500/50 transition-colors">
-                  <div className="pl-4 pr-2 text-zinc-500 font-medium">splitledger.app/u/</div>
-                  <input 
-                    type="text"
-                    value={username}
-                    onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                    className="w-full bg-transparent py-3 pr-4 text-white focus:outline-none placeholder:text-zinc-600"
-                    placeholder="username"
-                  />
+                <div className="flex flex-col gap-1.5 mt-2">
+                  <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Theme Preference</label>
+                  <div className="flex gap-2 p-1 bg-zinc-50 dark:bg-black/50 border border-zinc-200 dark:border-white/10 rounded-xl">
+                    <button onClick={() => setTheme('light')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-colors ${theme === 'light' ? 'bg-white dark:bg-white/10 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>
+                      <Sun className="w-4 h-4" /> Light
+                    </button>
+                    <button onClick={() => setTheme('dark')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-colors ${theme === 'dark' ? 'bg-white dark:bg-white/10 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>
+                      <Moon className="w-4 h-4" /> Dark
+                    </button>
+                    <button onClick={() => setTheme('system')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-colors ${theme === 'system' ? 'bg-white dark:bg-white/10 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>
+                      <Monitor className="w-4 h-4" /> System
+                    </button>
+                  </div>
                 </div>
-                <p className="text-[10px] text-zinc-500 mt-1.5 ml-1">Optional. Must be unique and contain only letters, numbers, and underscores.</p>
               </div>
 
               <div>

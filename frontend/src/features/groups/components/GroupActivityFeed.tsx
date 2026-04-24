@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { apiClient } from '../../../shared/api/axios';
+import { EmptyState } from '../../../shared/components/EmptyState';
 import { formatDistanceToNow } from 'date-fns';
 import {
   Receipt, UserPlus, UserMinus, CheckCircle, Archive,
@@ -77,6 +78,7 @@ export const GroupActivityFeed = ({ groupId, liveItems = [] }: Props) => {
   }, [groupId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     loadPage().finally(() => setLoading(false));
   }, [groupId]);
@@ -130,11 +132,12 @@ export const GroupActivityFeed = ({ groupId, liveItems = [] }: Props) => {
       </div>
 
       {items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center text-zinc-600">
-          <Receipt className="w-10 h-10 mb-3 opacity-20" />
-          <p className="text-sm font-medium">No activity yet</p>
-          <p className="text-xs mt-1">Actions like adding expenses or members will appear here.</p>
-        </div>
+        <EmptyState
+          variant="generic"
+          headline="No activity yet"
+          subtext="Actions like adding expenses, settling up, or adding members will appear here."
+          compact
+        />
       ) : (
         <div className="space-y-1">
           {items.map(item => {

@@ -1,5 +1,8 @@
 import { toast } from '../../../shared/store/useToastStore';
+import { EmptyState } from '../../../shared/components/EmptyState';
+import { ExpenseRowSkeleton, Skeleton } from '../../../shared/components/Skeleton';
 import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../shared/api/axios';
 import { ArrowLeft, Receipt, Banknote, Edit2, Trash2, Bell, Loader2, Calendar, Trophy } from 'lucide-react';
@@ -20,6 +23,7 @@ import { getFirstName, getSplitSummary } from '../../../shared/utils/expenseUtil
 import { ConfirmModal } from '../../../shared/components/ConfirmModal';
 import { useAuthStore } from '../../../app/store/useAuthStore';
 import { useUnreadStore } from '../../../shared/store/useUnreadStore';
+import { useHotkeys } from 'react-hotkeys-hook';
 
 interface GroupExpense {
   id: string;
@@ -82,6 +86,7 @@ export const GroupDetail = () => {
   const [timelineFilterDate, setTimelineFilterDate] = useState<string | null>(null);
   const [expenseTab, setExpenseTab] = useState<'unsettled' | 'settled'>('unsettled');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [focusedExpenseIndex, setFocusedExpenseIndex] = useState(-1);
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -168,11 +173,24 @@ export const GroupDetail = () => {
       'Settle Expense',
       `Are you sure you want to settle "${description}"? This will mark your portion as paid.`,
       async () => {
+        const previousDetail = detail;
+        setDetail(prev => {
+          if (!prev) return prev;
+          const expenseToSettle = prev.expenses.find((e: any) => e.id === expenseId);
+          if (!expenseToSettle) return prev;
+          
+          return {
+            ...prev,
+            expenses: prev.expenses.map((e: any) => e.id === expenseId ? { ...e, is_settled: true } : e)
+          };
+        });
+
         try {
           await apiClient.post(`/expenses/${expenseId}/settle`);
           toast.success('Expense settled!');
           refreshData();
         } catch {
+          setDetail(previousDetail);
           toast.error('Failed to settle expense');
         }
       },
@@ -201,7 +219,53 @@ export const GroupDetail = () => {
     }
   };
 
-  if (!detail) return <div className="p-8 text-white">Loading...</div>;
+  const filteredExpenses = expenses
+    .filter(e => expenseTab === 'settled' ? e.is_settled : !e.is_settled)
+    .filter(e => {
+      if (!timelineFilterDate) return true;
+      const filterD = new Date(timelineFilterDate);
+      const ed = new Date(e.created_at);
+      return filterD.getDate() === ed.getDate() && filterD.getMonth() === ed.getMonth() && filterD.getFullYear() === ed.getFullYear();
+    })
+    .filter(e => !selectedTag || (e.tags && e.tags.includes(selectedTag)));
+
+  useHotkeys('j', () => {
+    if (activeView === 'expenses') {
+      setFocusedExpenseIndex(prev => prev < filteredExpenses.length - 1 ? prev + 1 : prev);
+    }
+  }, { enableOnFormTags: false }, [filteredExpenses.length, activeView]);
+
+  useHotkeys('k', () => {
+    if (activeView === 'expenses') {
+      setFocusedExpenseIndex(prev => prev > 0 ? prev - 1 : prev === -1 && filteredExpenses.length > 0 ? 0 : prev);
+    }
+  }, { enableOnFormTags: false }, [filteredExpenses.length, activeView]);
+
+  const focusedExpense = focusedExpenseIndex >= 0 ? filteredExpenses[focusedExpenseIndex] : null;
+
+  if (!detail) {
+    return (
+      <div className="flex flex-col h-full bg-black/40 relative w-full shadow-2xl overflow-hidden backdrop-blur-md p-6">
+        <div className="flex items-center gap-4 mb-8">
+          <Skeleton className="w-10 h-10 rounded-full shrink-0" />
+          <div className="flex flex-col gap-2 w-full">
+            <Skeleton className="w-48 h-6 rounded-md" />
+            <Skeleton className="w-32 h-4 rounded-md" />
+          </div>
+        </div>
+        <div className="flex flex-col gap-4 w-full">
+          <Skeleton className="w-40 h-8 rounded-lg mb-2" />
+          <div className="grid grid-cols-1 gap-3">
+            <ExpenseRowSkeleton />
+            <ExpenseRowSkeleton />
+            <ExpenseRowSkeleton />
+            <ExpenseRowSkeleton />
+            <ExpenseRowSkeleton />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden relative">
@@ -277,9 +341,9 @@ export const GroupDetail = () => {
          </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar flex z-10">
+      <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col lg:flex-row z-10">
          {/* Main Content: Expenses */}
-         <div className="flex-1 p-8 border-r border-white/5 flex flex-col gap-8">
+         <div className="flex-1 p-4 lg:p-8 border-b lg:border-b-0 lg:border-r border-white/5 flex flex-col gap-8">
             {activeView === 'analytics' ? (
               <GroupAnalytics groupId={detail.id} />
             ) : activeView === 'timeline' ? (
@@ -348,22 +412,32 @@ export const GroupDetail = () => {
 
                   <div className="flex flex-col gap-3">
                     {expenses.length === 0 ? (
-                      <p className="text-zinc-500 text-sm">No expenses logged yet. Be the first!</p>
+                      <EmptyState
+                        variant="expenses"
+                        headline="No expenses yet"
+                        subtext="Add your first expense to start tracking who owes what."
+                        ctaLabel="Add First Expense"
+                        onCta={() => setExpenseModalOpen(true)}
+                        compact
+                      />
                     ) : (
                       <SubcategoryExpenseList
-                        expenses={
-                          expenses
-                            .filter(e => expenseTab === 'settled' ? e.is_settled : !e.is_settled)
-                            .filter(e => {
-                              if (!timelineFilterDate) return true;
-                              const filterD = new Date(timelineFilterDate);
-                              const ed = new Date(e.created_at);
-                              return filterD.getDate() === ed.getDate() && filterD.getMonth() === ed.getMonth() && filterD.getFullYear() === ed.getFullYear();
-                            })
-                            .filter(e => !selectedTag || (e.tags && e.tags.includes(selectedTag)))
-                        }
-                        renderExpense={(e: any) => (
-                          <div key={e.id} className={`p-4 rounded-2xl border ${e.is_settled ? 'border-emerald-500/20' : 'border-rose-500/20'} bg-white/[0.02] hover:bg-white/[0.04] transition-colors relative overflow-hidden group`}>
+                        expenses={filteredExpenses}
+                        renderExpense={(e: any) => {
+                          const isFocused = focusedExpense?.id === e.id;
+                          return (
+                          <motion.div 
+                            key={e.id} 
+                            drag="x"
+                            dragConstraints={{ left: 0, right: 0 }}
+                            dragElastic={{ left: 0.2, right: 0 }}
+                            onDragEnd={(_event, { offset }) => {
+                              if (offset.x < -80 && !e.is_settled && e.is_involved) {
+                                handleSettleSpecificExpense(e.id, e.description);
+                              }
+                            }}
+                            className={`p-4 rounded-2xl border ${e.is_settled ? 'border-emerald-500/20' : 'border-rose-500/20'} ${isFocused ? 'ring-2 ring-amber-500 bg-white/[0.06]' : 'bg-white/[0.02] hover:bg-white/[0.04]'} transition-colors relative overflow-hidden group`}
+                          >
                              <div className={`absolute left-0 top-0 bottom-0 w-1 transition-colors ${e.is_settled ? 'bg-emerald-500/50' : 'bg-rose-500/50'}`} />
                               <div className="flex justify-between items-start mb-1">
                                 <div className="flex flex-col gap-1 pr-2">
@@ -427,18 +501,19 @@ export const GroupDetail = () => {
                        )}
                         <ExpenseComments expenseId={e.id} />
                         <ExpenseAttachments expenseId={e.id} />
-                     </div>
-                        )}
-                      />
-                    )}
+                     </motion.div>
+                          );
+                        }}
+                       />
+                     )}
+                   </div>
                   </div>
-                </div>
               </>
             )}
          </div>
 
          {/* Right Sidebar */}
-         <div className="w-[350px] bg-black/20 p-8 flex flex-col gap-8">
+         <div className="w-full lg:w-[350px] bg-black/20 p-4 lg:p-8 flex flex-col gap-8">
             <div>
               <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
                 <Trophy className="w-4 h-4 text-emerald-500" /> Top Contributors
@@ -564,6 +639,24 @@ export const GroupDetail = () => {
         onSuccess={refreshData}
         groupMembers={detail.members}
         defaultDueDay={detail.default_due_day}
+        onOptimisticSubmit={(newExpense) => {
+          setDetail(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              expenses: [newExpense, ...prev.expenses]
+            };
+          });
+        }}
+        onRevert={(tempId) => {
+          setDetail(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              expenses: prev.expenses.filter((e: any) => e.id !== tempId)
+            };
+          });
+        }}
       />
       
       <GroupChat

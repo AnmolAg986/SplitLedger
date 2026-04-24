@@ -1,4 +1,4 @@
-import { toast } from '../../../shared/store/useToastStore';
+
 import React, { useState, useEffect } from 'react';
 import { X, Search, Bookmark } from 'lucide-react';
 import { apiClient } from '../../../shared/api/axios';
@@ -15,10 +15,12 @@ interface ExpenseModalProps {
   expenseToEdit?: any;  // If provided, we are in edit mode
   onSuccess: () => void;
   defaultDueDay?: number;
+  onOptimisticSubmit?: (expense: any, tempId: string) => void;
+  onRevert?: (tempId: string) => void;
 }
 
 export const ExpenseModal: React.FC<ExpenseModalProps> = ({ 
-  isOpen, onClose, groupId, groupType, groupMembers = [], expenseToEdit, onSuccess, defaultDueDay 
+  isOpen, onClose, groupId, groupType, groupMembers = [], expenseToEdit, onSuccess, defaultDueDay, onOptimisticSubmit, onRevert
 }) => {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState<string>('');
@@ -202,7 +204,29 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       }
     }
 
+    const tempId = `temp_${Date.now()}`;
+    const totalAmountNum = totalAmount;
+
     setLoading(true);
+
+    if (!expenseToEdit && onOptimisticSubmit) {
+      const tempExpense = {
+        id: tempId,
+        description,
+        amount: totalAmountNum,
+        currency,
+        category: category || 'other',
+        date: expenseDate,
+        due_date: dueDate || null,
+        tags,
+        paid_by_id: paidBy || getMemberId(groupMembers[0]),
+        paid_by_name: groupMembers.find(m => getMemberId(m) === (paidBy || getMemberId(groupMembers[0])))?.display_name || 'You',
+        is_settled: false,
+        created_at: new Date().toISOString()
+      };
+      onOptimisticSubmit(tempExpense, tempId);
+    }
+
     try {
       const payload = {
         groupId,
@@ -248,17 +272,18 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       }
       onSuccess();
       onClose();
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to save expense');
+    } catch (err: unknown) {
+      if (!expenseToEdit && onRevert) onRevert(tempId);
+      const e = err as { response?: { data?: { error?: string } } };
+      setError(e.response?.data?.error || 'Failed to save expense');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-zinc-900 border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl relative max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 pb-[env(safe-area-inset-bottom)] sm:pb-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-zinc-900 border border-white/10 p-6 rounded-t-3xl sm:rounded-2xl w-full max-w-md shadow-2xl relative max-h-[90vh] flex flex-col animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
         <button onClick={onClose} className="absolute right-4 top-4 text-zinc-400 hover:text-white">
           <X className="w-5 h-5" />
         </button>
