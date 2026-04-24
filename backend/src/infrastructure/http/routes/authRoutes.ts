@@ -6,6 +6,7 @@ import { requireAuth } from '../middleware/authMiddleware';
 const router = Router();
 
 router.put('/profile', requireAuth, AuthController.updateProfile);
+router.put('/onboarding', requireAuth, AuthController.completeOnboarding);
 
 router.get('/public/:username', AuthController.getPublicProfile);
 

@@ -13,6 +13,7 @@ export interface User {
   isVerified: boolean;
   loginCount: number;
   lastSeenAt?: Date | null;
+  onboardingCompleted: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +41,7 @@ export class UserRepository {
       isVerified: row.is_verified,
       loginCount: row.login_count,
       lastSeenAt: row.last_seen_at,
+      onboardingCompleted: row.onboarding_completed,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -61,6 +63,7 @@ export class UserRepository {
       isVerified: row.is_verified,
       loginCount: row.login_count,
       lastSeenAt: row.last_seen_at,
+      onboardingCompleted: row.onboarding_completed,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -85,6 +88,7 @@ export class UserRepository {
       upiId: row.upi_id,
       isVerified: row.is_verified,
       loginCount: row.login_count,
+      onboardingCompleted: row.onboarding_completed,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -96,6 +100,10 @@ export class UserRepository {
 
   static async incrementLoginCount(userId: string): Promise<void> {
     await pool.query('UPDATE users SET login_count = login_count + 1 WHERE id = $1', [userId]);
+  }
+
+  static async completeOnboarding(userId: string): Promise<void> {
+    await pool.query('UPDATE users SET onboarding_completed = true WHERE id = $1', [userId]);
   }
 
   static async updateProfile(userId: string, displayName: string, avatarUrl: string | null, username: string | null): Promise<User | null> {
@@ -116,6 +124,7 @@ export class UserRepository {
       upiId: row.upi_id,
       isVerified: row.is_verified,
       loginCount: row.login_count,
+      onboardingCompleted: row.onboarding_completed,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };

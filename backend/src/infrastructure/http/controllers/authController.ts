@@ -108,6 +108,8 @@ export class AuthController {
           phoneNumber: user.phoneNumber, 
           displayName: user.displayName,
           username: user.username,
+          avatarUrl: user.avatarUrl,
+          onboardingCompleted: user.onboardingCompleted,
           loginCount: user.loginCount + 1
         },
         accessToken,
@@ -178,6 +180,7 @@ export class AuthController {
           phoneNumber: updatedUser?.phoneNumber, 
           displayName: updatedUser?.displayName,
           username: updatedUser?.username,
+          onboardingCompleted: updatedUser?.onboardingCompleted,
           loginCount: updatedUser?.loginCount
         },
         accessToken,
@@ -305,13 +308,15 @@ export class AuthController {
         }
 
         return res.status(200).json({
-          user: {
-            id: updatedUser.id,
-            email: updatedUser.email,
-            phoneNumber: updatedUser.phoneNumber,
+          message: 'Profile updated successfully',
+          user: { 
+            id: updatedUser.id, 
+            email: updatedUser.email, 
+            phoneNumber: updatedUser.phoneNumber, 
             displayName: updatedUser.displayName,
-            avatarUrl: updatedUser.avatarUrl,
             username: updatedUser.username,
+            avatarUrl: updatedUser.avatarUrl,
+            onboardingCompleted: updatedUser.onboardingCompleted,
             loginCount: updatedUser.loginCount
           }
         });
@@ -344,6 +349,35 @@ export class AuthController {
       });
     } catch (e) {
       console.error('[AuthController] getPublicProfile error:', e);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  static async completeOnboarding(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      await UserRepository.completeOnboarding(userId);
+      
+      const user = await UserRepository.findById(userId);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      return res.status(200).json({
+        message: 'Onboarding completed',
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          phoneNumber: user.phoneNumber, 
+          displayName: user.displayName,
+          username: user.username,
+          avatarUrl: user.avatarUrl,
+          onboardingCompleted: user.onboardingCompleted,
+          loginCount: user.loginCount
+        }
+      });
+    } catch (e) {
+      console.error(e);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
