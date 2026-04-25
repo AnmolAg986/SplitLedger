@@ -21,6 +21,7 @@ import { NotificationPreferences } from './features/profile/pages/NotificationPr
 import { Analytics } from './features/profile/pages/Analytics';
 import { useEffect } from 'react';
 import { useThemeStore } from './shared/store/useThemeStore';
+import { CookieConsentBanner } from './shared/components/CookieConsentBanner';
 
 const ThemeManager = () => {
   const { theme } = useThemeStore();
@@ -58,6 +59,7 @@ export const App = () => {
       <ThemeManager />
       <ToastContainer />
       <PWAPrompt />
+      <CookieConsentBanner />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />

@@ -10,6 +10,7 @@ interface User {
   username?: string | null;
   onboardingCompleted?: boolean;
   loginCount: number;
+  twoFaEnabled?: boolean;
 }
 
 interface AuthState {

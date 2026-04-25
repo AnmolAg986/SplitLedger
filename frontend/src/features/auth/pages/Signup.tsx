@@ -12,6 +12,7 @@ export const Signup = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [agreedToPrivacyPolicy, setAgreedToPrivacyPolicy] = useState(false);
   const navigate = useNavigate();
 
   const getPasswordStrength = (pass: string) => {
@@ -53,10 +54,14 @@ export const Signup = () => {
       setError('Passwords do not match.');
       return;
     }
+    if (!agreedToPrivacyPolicy) {
+      setError('You must agree to the Privacy Policy to create an account.');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
-      await apiClient.post('/auth/register', { identifier, password, displayName });
+      await apiClient.post('/auth/register', { identifier, password, displayName, agreedToPrivacyPolicy: true });
       navigate(`/verify-email?identifier=${encodeURIComponent(identifier)}`);
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string | { message?: string }[] } } };
@@ -242,7 +247,22 @@ export const Signup = () => {
               </div>
             </div>
 
-            <div className="pt-6">
+            {/* Privacy Policy Agreement */}
+            <div className="flex items-start gap-3 p-4 bg-white/[0.03] border border-white/5 rounded-xl">
+              <div className="relative flex items-center justify-center h-5 w-5 mt-0.5 shrink-0 bg-[#050505] border border-white/10 rounded-md hover:border-white/20 transition-all cursor-pointer" onClick={() => setAgreedToPrivacyPolicy(!agreedToPrivacyPolicy)}>
+                <input type="checkbox" className="peer absolute h-full w-full opacity-0 cursor-pointer" checked={agreedToPrivacyPolicy} onChange={() => setAgreedToPrivacyPolicy(!agreedToPrivacyPolicy)} />
+                <div className={`h-2.5 w-2.5 rounded-[2px] transition-all ${agreedToPrivacyPolicy ? 'bg-cyan-400 opacity-100' : 'bg-white opacity-0'}`} />
+              </div>
+              <p className="text-[12px] text-zinc-400 leading-relaxed">
+                I agree to the{' '}
+                <a href="/privacy" target="_blank" className="text-cyan-400 hover:text-cyan-300 font-bold transition-colors">Privacy Policy</a>
+                {' '}and{' '}
+                <a href="/terms" target="_blank" className="text-cyan-400 hover:text-cyan-300 font-bold transition-colors">Terms of Service</a>.
+                My data will be processed as described.
+              </p>
+            </div>
+
+            <div className="pt-4">
               <button
                 type="submit"
                 disabled={loading}
