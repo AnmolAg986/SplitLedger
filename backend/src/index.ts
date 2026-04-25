@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import { createServer } from 'http';
 import { errorHandler } from './infrastructure/http/middleware/errorHandler';
 import { env } from './config/env';
@@ -48,10 +49,34 @@ app.use(pinoHttp({
   genReqId: (req) => req.id 
 }));
 
+// Apply Helmet with Content Security Policy (CSP)
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:", env.CORS_ORIGIN], // Allows images from self, data URIs, and frontend
+      connectSrc: ["'self'", env.CORS_ORIGIN, "ws:", "wss:"], // Allows API calls and WebSocket connections
+      fontSrc: ["'self'", "https:", "data:"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  crossOriginResourcePolicy: { policy: "cross-origin" } // Required if frontend loads /uploads images via cross-origin
+}));
+
 app.use(cors({
   origin: [env.CORS_ORIGIN, 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:3000'],
   credentials: true
 }));
+
+// CSRF Protection Note:
+// SplitLedger uses Bearer tokens (JWT) sent via the `Authorization` header instead of cookies.
+// Because the browser does not automatically attach Bearer tokens to cross-site requests,
+// traditional CSRF (Cross-Site Request Forgery) attacks are inherently mitigated.
+// No double-submit cookie or stateful CSRF token middleware (like csurf) is necessary.
 app.use(express.json());
 
 // Routes

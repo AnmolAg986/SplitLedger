@@ -4,6 +4,7 @@ import { ExpenseService, CreateExpenseServiceInput } from '../../../application/
 import { RecurringExpenseRepository } from '../../persistence/RecurringExpenseRepository';
 import { AppError } from '../../../shared/errors/AppError';
 import { GroupActivityRepository } from '../../persistence/GroupActivityRepository';
+import { AuditLogRepository } from '../../persistence/AuditLogRepository';
 
 export class ExpenseController {
 
@@ -80,6 +81,8 @@ export class ExpenseController {
           expense_id: id, description: expense.description
         });
       }
+
+      await AuditLogRepository.log(userId, 'expense_delete', 'expense', id, req.ip || null, req.headers['user-agent'] || null);
 
       return res.status(200).json({ message: 'Expense deleted' });
     } catch (err) {

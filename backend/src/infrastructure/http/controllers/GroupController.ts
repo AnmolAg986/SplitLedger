@@ -10,6 +10,7 @@ import { BlockRepository } from '../../persistence/BlockRepository';
 import { pool } from '../../../config/db';
 import { ioInstance } from '../../websocket/socketServer';
 import QRCode from 'qrcode';
+import { AuditLogRepository } from '../../persistence/AuditLogRepository';
 
 export class GroupController {
 
@@ -257,6 +258,9 @@ export class GroupController {
       if (!canDo) return res.status(403).json({ error: 'Insufficient permissions to change this role' });
 
       await GroupRepository.changeMemberRole(groupId, targetUserId, newRole);
+
+      await AuditLogRepository.log(requesterId, 'group_role_change', 'group', groupId, req.ip || null, req.headers['user-agent'] || null);
+
       return res.status(200).json({ message: 'Member role updated' });
     } catch (err) {
       console.error('[GroupController] changeMemberRole error:', err);

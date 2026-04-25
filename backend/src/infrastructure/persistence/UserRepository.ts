@@ -14,6 +14,10 @@ export interface User {
   loginCount: number;
   lastSeenAt?: Date | null;
   onboardingCompleted: boolean;
+  totpSecret?: string | null;
+  twoFaEnabled: boolean;
+  privacyPolicyAgreedAt?: Date | null;
+  deletedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -42,6 +46,10 @@ export class UserRepository {
       loginCount: row.login_count,
       lastSeenAt: row.last_seen_at,
       onboardingCompleted: row.onboarding_completed,
+      totpSecret: row.totp_secret,
+      twoFaEnabled: row.two_fa_enabled,
+      privacyPolicyAgreedAt: row.privacy_policy_agreed_at,
+      deletedAt: row.deleted_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -64,6 +72,10 @@ export class UserRepository {
       loginCount: row.login_count,
       lastSeenAt: row.last_seen_at,
       onboardingCompleted: row.onboarding_completed,
+      totpSecret: row.totp_secret,
+      twoFaEnabled: row.two_fa_enabled,
+      privacyPolicyAgreedAt: row.privacy_policy_agreed_at,
+      deletedAt: row.deleted_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -89,6 +101,8 @@ export class UserRepository {
       isVerified: row.is_verified,
       loginCount: row.login_count,
       onboardingCompleted: row.onboarding_completed,
+      totpSecret: row.totp_secret,
+      twoFaEnabled: row.two_fa_enabled,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -125,6 +139,8 @@ export class UserRepository {
       isVerified: row.is_verified,
       loginCount: row.login_count,
       onboardingCompleted: row.onboarding_completed,
+      totpSecret: row.totp_secret,
+      twoFaEnabled: row.two_fa_enabled,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -197,5 +213,101 @@ export class UserRepository {
       `UPDATE users SET last_seen_at = $1 WHERE id = $2`,
       [lastSeen, userId]
     );
+  }
+
+  // --- 2FA Methods ---
+  static async enable2FA(userId: string, secret: string): Promise<void> {
+    await pool.query(
+      `UPDATE users SET totp_secret = $1, two_fa_enabled = true WHERE id = $2`,
+      [secret, userId]
+    );
+  }
+
+  static async disable2FA(userId: string): Promise<void> {
+    await pool.query(
+      `UPDATE users SET totp_secret = NULL, two_fa_enabled = false WHERE id = $1`,
+      [userId]
+    );
+    await pool.query(
+      `DELETE FROM two_fa_recovery_codes WHERE user_id = $1`,
+      [userId]
+    );
+  }
+
+  static async storeRecoveryCodes(userId: string, hashes: string[]): Promise<void> {
+    if (hashes.length === 0) return;
+    const values = hashes.map((_, i) => `($1, $${i + 2})`).join(', ');
+    const params = [userId, ...hashes];
+    await pool.query(
+      `INSERT INTO two_fa_recovery_codes (user_id, code_hash) VALUES ${values}`,
+      params
+    );
+  }
+
+  static async verifyRecoveryCode(userId: string, hash: string): Promise<boolean> {
+    const res = await pool.query(
+      `SELECT * FROM two_fa_recovery_codes WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL`,
+      [userId, hash]
+    );
+    if (res.rows.length > 0) {
+      await pool.query(
+        `UPDATE two_fa_recovery_codes SET used_at = now() WHERE user_id = $1 AND code_hash = $2`,
+        [userId, hash]
+      );
+      return true;
+    }
+    return false;
+  }
+
+  // --- GDPR / Privacy ---
+
+  static async recordPrivacyPolicyAgreement(userId: string): Promise<void> {
+    await pool.query(
+      `UPDATE users SET privacy_policy_agreed_at = now() WHERE id = $1`,
+      [userId]
+    );
+  }
+
+  static async softDeleteAccount(userId: string): Promise<void> {
+    await pool.query(
+      `UPDATE users SET deleted_at = now() WHERE id = $1`,
+      [userId]
+    );
+    // Schedule hard deletion in 30 days
+    const scheduledAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    await pool.query(
+      `INSERT INTO account_deletions (user_id, scheduled_at) VALUES ($1, $2)`,
+      [userId, scheduledAt]
+    );
+  }
+
+  static async cancelDeletion(userId: string): Promise<void> {
+    await pool.query(
+      `UPDATE users SET deleted_at = NULL WHERE id = $1`,
+      [userId]
+    );
+    await pool.query(
+      `UPDATE account_deletions SET cancelled_at = now() WHERE user_id = $1 AND executed_at IS NULL AND cancelled_at IS NULL`,
+      [userId]
+    );
+  }
+
+  static async exportData(userId: string): Promise<Record<string, unknown>> {
+    const [user, expenses, messages, settlements, groups] = await Promise.all([
+      pool.query(`SELECT id, email, phone_number, display_name, username, avatar_url, default_currency, created_at FROM users WHERE id = $1`, [userId]),
+      pool.query(`SELECT * FROM expenses WHERE paid_by = $1 ORDER BY created_at DESC`, [userId]),
+      pool.query(`SELECT * FROM messages WHERE sender_id = $1 ORDER BY created_at DESC`, [userId]),
+      pool.query(`SELECT * FROM settlement_history WHERE payer_id = $1 OR payee_id = $1 ORDER BY settled_at DESC`, [userId]),
+      pool.query(`SELECT g.* FROM groups g JOIN group_members gm ON gm.group_id = g.id WHERE gm.user_id = $1`, [userId]),
+    ]);
+
+    return {
+      exportedAt: new Date().toISOString(),
+      profile: user.rows[0] ?? null,
+      expenses: expenses.rows,
+      messages: messages.rows,
+      settlements: settlements.rows,
+      groups: groups.rows,
+    };
   }
 }

@@ -5,6 +5,7 @@ import { FriendRepository } from '../../persistence/FriendRepository';
 import { UnreadRepository } from '../../persistence/UnreadRepository';
 import { ioInstance } from '../../websocket/socketServer';
 import { NotificationService as NotificationSys } from '../../../application/services/NotificationService';
+import { AuditLogRepository } from '../../persistence/AuditLogRepository';
 
 export class SettlementController {
 
@@ -53,6 +54,8 @@ export class SettlementController {
       } catch (e) {
         console.error('Failed to update unread counts or notify:', e);
       }
+
+      await AuditLogRepository.log(userId, 'settlement_create', 'settlement', settlement.id, req.ip || null, req.headers['user-agent'] || null);
 
       return res.status(201).json(settlement);
     } catch (err) {
@@ -123,6 +126,8 @@ export class SettlementController {
       } catch (e) {
         console.error('Failed to update unread counts or notify:', e);
       }
+
+      await AuditLogRepository.log(userId, 'settlement_all_mutual', 'friend', friendId, req.ip || null, req.headers['user-agent'] || null);
 
       return res.status(200).json({ message: 'All mutual debts settled successfully' });
     } catch (err) {
