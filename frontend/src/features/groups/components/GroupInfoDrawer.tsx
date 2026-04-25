@@ -1,3 +1,4 @@
+import { LazyImage } from '../../../shared/components/LazyImage';
 import { toast } from '../../../shared/store/useToastStore';
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Crown, UserPlus, LogOut, Trash2, Search, Loader2, Edit2, Camera, MessageSquare } from 'lucide-react';
@@ -352,7 +353,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
                     onClick={() => setShowAvatarMenu(!showAvatarMenu)}
                   >
                      {editForm.avatarUrl ? (
-                       <img src={`http://localhost:3000${editForm.avatarUrl}`} alt="Group" className="w-full h-full object-cover" />
+                       <LazyImage src={`http://localhost:3000${editForm.avatarUrl}`} alt="Group" className="w-full h-full object-cover" />
                      ) : (
                        <span className="text-2xl font-black text-indigo-400">{editForm.name?.charAt(0)?.toUpperCase()}</span>
                      )}
@@ -447,7 +448,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
                   onClick={() => detail.avatar_url && window.open(`http://localhost:3000${detail.avatar_url}`, '_blank')}
                 >
                   {detail.avatar_url ? (
-                     <img src={`http://localhost:3000${detail.avatar_url}`} alt="Group" className="w-full h-full object-cover" />
+                     <LazyImage src={`http://localhost:3000${detail.avatar_url}`} alt="Group" className="w-full h-full object-cover" />
                    ) : (
                      <span className="text-2xl font-black text-indigo-400">{detail.name?.charAt(0)?.toUpperCase()}</span>
                    )}
@@ -519,7 +520,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
                   >
                     <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold text-white overflow-hidden">
                       {f.avatar_url ? (
-                        <img src={`http://localhost:3000${f.avatar_url}`} alt={f.display_name} className="w-full h-full object-cover" />
+                        <LazyImage src={`http://localhost:3000${f.avatar_url}`} alt={f.display_name} className="w-full h-full object-cover" />
                       ) : (
                         f.display_name?.charAt(0)?.toUpperCase()
                       )}
@@ -556,7 +557,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
                   <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/[0.03] transition-colors group">
                     <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white shrink-0 overflow-hidden">
                       {m.avatar_url ? (
-                        <img src={`http://localhost:3000${m.avatar_url}`} alt={m.display_name} className="w-full h-full object-cover" />
+                        <LazyImage src={`http://localhost:3000${m.avatar_url}`} alt={m.display_name} className="w-full h-full object-cover" />
                       ) : (
                         m.display_name?.charAt(0)?.toUpperCase()
                       )}
@@ -643,7 +644,7 @@ export const GroupInfoDrawer: React.FC<GroupInfoDrawerProps> = ({ isOpen, onClos
                     <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl bg-amber-500/5 border border-amber-500/10">
                       <div className="w-9 h-9 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-xs font-bold shrink-0 overflow-hidden">
                         {m.avatar_url ? (
-                          <img src={`http://localhost:3000${m.avatar_url}`} alt={m.display_name} className="w-full h-full object-cover" />
+                          <LazyImage src={`http://localhost:3000${m.avatar_url}`} alt={m.display_name} className="w-full h-full object-cover" />
                         ) : (
                           m.display_name?.charAt(0)?.toUpperCase()
                         )}

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { LazyImage } from '../../../shared/components/LazyImage';
+import { useState, useEffect, useRef } from 'react';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ListCardSkeleton } from '../../../shared/components/Skeleton';
 import { useNavigate } from 'react-router-dom';
@@ -230,7 +231,7 @@ export const Friends = () => {
                          <div className="flex items-center gap-3">
                            <div className="w-10 h-10 rounded-full bg-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center text-sm shrink-0 overflow-hidden">
                              {req.avatar_url ? (
-                               <img src={`http://localhost:3000${req.avatar_url}`} alt={req.display_name} className="w-full h-full object-cover" />
+                               <LazyImage src={`http://localhost:3000${req.avatar_url}`} alt={req.display_name} className="w-full h-full object-cover" />
                              ) : (
                                req.display_name.charAt(0).toUpperCase()
                              )}
@@ -296,7 +297,7 @@ export const Friends = () => {
                       <div key={`sugg-${i}`} className="p-4 w-[180px] rounded-2xl bg-white/[0.02] border border-white/10 flex flex-col items-center text-center gap-3 shrink-0">
                          <div className="w-14 h-14 rounded-full bg-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center text-xl overflow-hidden">
                            {user.avatar_url ? (
-                             <img src={`http://localhost:3000${user.avatar_url}`} alt={user.display_name} className="w-full h-full object-cover" />
+                             <LazyImage src={`http://localhost:3000${user.avatar_url}`} alt={user.display_name} className="w-full h-full object-cover" />
                            ) : (
                              user.display_name.charAt(0).toUpperCase()
                            )}
@@ -378,7 +379,7 @@ export const Friends = () => {
                         <div className="relative w-16 h-16">
                           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center border border-amber-500/30 group-hover:scale-105 transition-transform shadow-[0_0_15px_rgba(245,158,11,0.15)] overflow-hidden">
                             {f.avatar_url ? (
-                              <img src={`http://localhost:3000${f.avatar_url}`} alt={f.display_name} className="w-full h-full object-cover" />
+                              <LazyImage src={`http://localhost:3000${f.avatar_url}`} alt={f.display_name} className="w-full h-full object-cover" />
                             ) : (
                               <span className="text-amber-400 font-black text-2xl">{f.display_name.charAt(0).toUpperCase()}</span>
                             )}

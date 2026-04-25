@@ -1,3 +1,4 @@
+import { LazyImage } from '../../../shared/components/LazyImage';
 import { toast } from '../../../shared/store/useToastStore';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ExpenseRowSkeleton, Skeleton } from '../../../shared/components/Skeleton';
@@ -70,6 +71,7 @@ export const GroupDetail = () => {
     description?: string;
     members: { id: string; display_name: string; role?: string }[];
     default_due_day?: number;
+    expenses?: any[];
     created_at: string;
   } | null>(null);
   const [expenses, setExpenses] = useState<GroupExpense[]>([]);
@@ -176,12 +178,12 @@ export const GroupDetail = () => {
         const previousDetail = detail;
         setDetail(prev => {
           if (!prev) return prev;
-          const expenseToSettle = prev.expenses.find((e: any) => e.id === expenseId);
+          const expenseToSettle = (prev.expenses || []).find((e: any) => e.id === expenseId);
           if (!expenseToSettle) return prev;
           
           return {
             ...prev,
-            expenses: prev.expenses.map((e: any) => e.id === expenseId ? { ...e, is_settled: true } : e)
+            expenses: (prev.expenses ? prev.expenses.map((e: any) => e.id === expenseId ? { ...e, is_settled: true } : e) : [])
           };
         });
 
@@ -528,7 +530,7 @@ export const GroupDetail = () => {
                         <span className={`text-sm font-black w-4 ${idx === 0 ? 'text-emerald-500' : 'text-zinc-500'}`}>{idx + 1}</span>
                         <div className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-xs font-bold text-white overflow-hidden">
                           {(l as any).avatar_url ? (
-                            <img src={`http://localhost:3000${(l as any).avatar_url}`} alt={l.display_name} className="w-full h-full object-cover" />
+                            <LazyImage src={`http://localhost:3000${(l as any).avatar_url}`} alt={l.display_name} className="w-full h-full object-cover" />
                           ) : (
                             l.display_name.charAt(0).toUpperCase()
                           )}
@@ -644,7 +646,7 @@ export const GroupDetail = () => {
             if (!prev) return prev;
             return {
               ...prev,
-              expenses: [newExpense, ...prev.expenses]
+              expenses: [newExpense, ...(prev.expenses || [])]
             };
           });
         }}
@@ -653,7 +655,7 @@ export const GroupDetail = () => {
             if (!prev) return prev;
             return {
               ...prev,
-              expenses: prev.expenses.filter((e: any) => e.id !== tempId)
+              expenses: (prev.expenses || []).filter((e: any) => e.id !== tempId)
             };
           });
         }}

@@ -1,3 +1,4 @@
+import { LazyImage } from '../../../shared/components/LazyImage';
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Send, Loader2, Trash2 } from 'lucide-react';
 import { apiClient } from '../../../shared/api/axios';
@@ -121,7 +122,7 @@ export const ExpenseComments: React.FC<ExpenseCommentsProps> = ({ expenseId }) =
                   <div key={c.id} className="flex gap-2.5">
                     <div className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-[10px] font-bold shrink-0 overflow-hidden">
                       {c.avatar_url ? (
-                        <img src={`http://localhost:3000${c.avatar_url}`} alt={c.user_name} className="w-full h-full object-cover" />
+                        <LazyImage src={`http://localhost:3000${c.avatar_url}`} alt={c.user_name} className="w-full h-full object-cover" />
                       ) : (
                         c.user_name?.charAt(0).toUpperCase()
                       )}

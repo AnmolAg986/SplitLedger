@@ -1,3 +1,4 @@
+import { LazyImage } from '../../../shared/components/LazyImage';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { apiClient } from '../../../shared/api/axios';
 import { EmptyState } from '../../../shared/components/EmptyState';
@@ -38,7 +39,7 @@ const EVENT_CONFIG: Record<string, { icon: React.ElementType; color: string; lab
 };
 
 const Avatar = ({ name, url }: { name: string; url?: string }) => {
-  if (url) return <img src={url} alt={name} className="w-8 h-8 rounded-full object-cover" />;
+  if (url) return <LazyImage src={url} alt={name} className="w-8 h-8 rounded-full object-cover" />;
   const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   return (
     <div className="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-[10px] font-bold text-indigo-300 shrink-0">

@@ -1,3 +1,4 @@
+import { LazyImage } from '../../../shared/components/LazyImage';
 import { useState, useRef } from 'react';
 import { useAuthStore } from '../../../app/store/useAuthStore';
 import { apiClient } from '../../../shared/api/axios';
@@ -230,7 +231,7 @@ export const Profile = () => {
                   onClick={() => setShowAvatarMenu(!showAvatarMenu)}
                 >
                    {avatarUrl ? (
-                     <img src={`http://localhost:3000${avatarUrl}`} alt="Profile" className="w-full h-full object-cover" />
+                     <LazyImage src={`http://localhost:3000${avatarUrl}`} alt="Profile" className="w-full h-full object-cover" />
                    ) : (
                      <span className="text-5xl font-black text-cyan-400">{displayName.charAt(0).toUpperCase()}</span>
                    )}

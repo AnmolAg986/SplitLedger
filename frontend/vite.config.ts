@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { visualizer } from 'rollup-plugin-visualizer'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -82,7 +83,9 @@ export default defineConfig({
           }
         ]
       }
-    })
+    }),
+    // Bundle analysis — run `ANALYZE=1 npm run build` to generate stats.html (14.7)
+    ...(process.env.ANALYZE ? [visualizer({ open: true, gzipSize: true, brotliSize: true })] : [])
   ],
   optimizeDeps: {
     include: ['date-fns']

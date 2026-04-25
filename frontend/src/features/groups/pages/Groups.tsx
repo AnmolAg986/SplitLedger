@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { LazyImage } from '../../../shared/components/LazyImage';
+import { useState, useEffect, useRef } from 'react';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ListCardSkeleton } from '../../../shared/components/Skeleton';
 import { useNavigate } from 'react-router-dom';
@@ -274,7 +275,7 @@ export const Groups = () => {
               <div className="flex justify-between items-start mb-5 relative z-10 w-full">
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-indigo-600/10 flex items-center justify-center border border-indigo-500/30 group-hover:scale-105 transition-transform shadow-[0_0_15px_rgba(99,102,241,0.15)] overflow-hidden">
                   {g.avatar_url ? (
-                    <img src={`http://localhost:3000${g.avatar_url}`} alt={g.name} className="w-full h-full object-cover" />
+                    <LazyImage src={`http://localhost:3000${g.avatar_url}`} alt={g.name} className="w-full h-full object-cover" />
                   ) : (
                     <Users className="w-8 h-8 text-indigo-400" />
                   )}
@@ -416,7 +417,7 @@ export const Groups = () => {
                          >
                            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white overflow-hidden">
                              {f.avatar_url ? (
-                               <img src={`http://localhost:3000${f.avatar_url}`} alt={f.display_name} className="w-full h-full object-cover" />
+                               <LazyImage src={`http://localhost:3000${f.avatar_url}`} alt={f.display_name} className="w-full h-full object-cover" />
                              ) : (
                                f.display_name?.charAt(0)?.toUpperCase()
                              )}

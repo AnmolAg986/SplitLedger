@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ChatMessageSkeleton } from '../../../shared/components/Skeleton';
-import { Send, MessageSquare, X, Check, CheckCheck, MoreVertical, Edit2, Trash2 } from 'lucide-react';
+import { Send, MessageSquare, X, Check, CheckCheck, MoreVertical, Edit2, Trash2, Loader2 } from 'lucide-react';
 import { useSocket } from '../../../shared/hooks/useSocket';
 import { useAuthStore } from '../../../app/store/useAuthStore';
 import { apiClient } from '../../../shared/api/axios';

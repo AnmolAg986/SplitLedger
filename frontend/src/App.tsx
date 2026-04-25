@@ -1,4 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
+
+// Eagerly loaded — needed immediately on first render
 import { Login } from './features/auth/pages/Login';
 import { Signup } from './features/auth/pages/Signup';
 import { VerifyEmail } from './features/auth/pages/VerifyEmail';
@@ -7,21 +10,27 @@ import { ResetPassword } from './features/auth/pages/ResetPassword';
 import { ProtectedRoute } from './app/routes/ProtectedRoute';
 import { DashboardLayout } from './app/layouts/DashboardLayout';
 import { Dashboard } from './features/dashboard/pages/Dashboard';
-
-import { FriendDetail } from './features/friends/pages/FriendDetail';
-import { GroupDetail } from './features/groups/pages/GroupDetail';
-import { JoinGroup } from './features/groups/pages/JoinGroup';
-import { Activity } from './features/dashboard/pages/Activity';
-import { Profile } from './features/dashboard/pages/Profile';
-import { PublicProfile } from './features/friends/pages/PublicProfile';
-import { Connections } from './features/connections/pages/Connections';
 import { ToastContainer } from './shared/components/ToastContainer';
 import { PWAPrompt } from './shared/components/PWAPrompt';
-import { NotificationPreferences } from './features/profile/pages/NotificationPreferences';
-import { Analytics } from './features/profile/pages/Analytics';
-import { useEffect } from 'react';
-import { useThemeStore } from './shared/store/useThemeStore';
 import { CookieConsentBanner } from './shared/components/CookieConsentBanner';
+import { useThemeStore } from './shared/store/useThemeStore';
+
+// Lazily loaded — only fetched when the user navigates to these routes (14.7)
+const FriendDetail = lazy(() => import('./features/friends/pages/FriendDetail').then(m => ({ default: m.FriendDetail })));
+const GroupDetail = lazy(() => import('./features/groups/pages/GroupDetail').then(m => ({ default: m.GroupDetail })));
+const JoinGroup = lazy(() => import('./features/groups/pages/JoinGroup').then(m => ({ default: m.JoinGroup })));
+const Activity = lazy(() => import('./features/dashboard/pages/Activity').then(m => ({ default: m.Activity })));
+const Profile = lazy(() => import('./features/dashboard/pages/Profile').then(m => ({ default: m.Profile })));
+const PublicProfile = lazy(() => import('./features/friends/pages/PublicProfile').then(m => ({ default: m.PublicProfile })));
+const Connections = lazy(() => import('./features/connections/pages/Connections').then(m => ({ default: m.Connections })));
+const NotificationPreferences = lazy(() => import('./features/profile/pages/NotificationPreferences').then(m => ({ default: m.NotificationPreferences })));
+const Analytics = lazy(() => import('./features/profile/pages/Analytics').then(m => ({ default: m.Analytics })));
+
+const PageFallback = () => (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-500" />
+  </div>
+);
 
 const ThemeManager = () => {
   const { theme } = useThemeStore();
@@ -60,40 +69,42 @@ export const App = () => {
       <ToastContainer />
       <PWAPrompt />
       <CookieConsentBanner />
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/verify-email" element={<VerifyEmail />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        
-        {/* Public Routes */}
-        <Route path="/u/:username" element={<PublicProfile />} />
-        
-        {/* Protected Navigation Shell */}
-        <Route element={<ProtectedRoute />}>
-          <Route element={<DashboardLayout />}>
-            
-            <Route path="/" element={<Dashboard />} />
-            
-            <Route path="/connections" element={<Connections />} />
-            <Route path="/friends/:id" element={<FriendDetail />} />
-            <Route path="/groups/:id" element={<GroupDetail />} />
-            <Route path="/join/:token" element={<JoinGroup />} />
-            <Route path="/activity" element={<Activity />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/profile/notifications" element={<NotificationPreferences />} />
-            <Route path="/profile/analytics" element={<Analytics />} />
+      <Suspense fallback={<PageFallback />}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          
+          {/* Public Routes */}
+          <Route path="/u/:username" element={<PublicProfile />} />
+          
+          {/* Protected Navigation Shell */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<DashboardLayout />}>
+              
+              <Route path="/" element={<Dashboard />} />
+              
+              <Route path="/connections" element={<Connections />} />
+              <Route path="/friends/:id" element={<FriendDetail />} />
+              <Route path="/groups/:id" element={<GroupDetail />} />
+              <Route path="/join/:token" element={<JoinGroup />} />
+              <Route path="/activity" element={<Activity />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/profile/notifications" element={<NotificationPreferences />} />
+              <Route path="/profile/analytics" element={<Analytics />} />
 
-            {/* Legacy redirects */}
-            <Route path="/friends" element={<Navigate to="/connections?tab=friends" replace />} />
-            <Route path="/groups" element={<Navigate to="/connections?tab=groups" replace />} />
+              {/* Legacy redirects */}
+              <Route path="/friends" element={<Navigate to="/connections?tab=friends" replace />} />
+              <Route path="/groups" element={<Navigate to="/connections?tab=groups" replace />} />
 
+            </Route>
           </Route>
-        </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 };

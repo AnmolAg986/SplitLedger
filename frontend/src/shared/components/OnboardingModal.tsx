@@ -1,3 +1,4 @@
+import { LazyImage } from './LazyImage';
 import { useState, useRef } from 'react';
 import { Camera, UserPlus, Receipt, Layers, ArrowRight, Loader2, Check } from 'lucide-react';
 import { useAuthStore } from '../../app/store/useAuthStore';
@@ -99,7 +100,7 @@ export const OnboardingModal = ({ onComplete }: Props) => {
                 onClick={() => fileInputRef.current?.click()}
               >
                 {avatarUrl ? (
-                  <img src={`http://localhost:3000${avatarUrl}`} alt="Avatar" className="w-full h-full object-cover" />
+                  <LazyImage src={`http://localhost:3000${avatarUrl}`} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
                   <Camera className="w-8 h-8 text-indigo-400 group-hover:scale-110 transition-transform" />
                 )}

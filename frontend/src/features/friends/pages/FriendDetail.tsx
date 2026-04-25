@@ -1,7 +1,8 @@
+import { LazyImage } from '../../../shared/components/LazyImage';
 import { toast } from '../../../shared/store/useToastStore';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ExpenseRowSkeleton, ChatMessageSkeleton, Skeleton } from '../../../shared/components/Skeleton';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { motion } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -47,6 +48,8 @@ interface ChatMessage {
   id: string;
   sender_id: string;
   content: string;
+  reactions?: any;
+  user_reactions?: string[];
   created_at: string;
   is_edited?: boolean;
   is_deleted_for_everyone?: boolean;
@@ -588,7 +591,7 @@ export const FriendDetail = () => {
                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
                      <div className="relative">
                        {detail.friend.avatar_url ? (
-                         <img src={`http://localhost:3000${detail.friend.avatar_url}`} alt="" className="w-8 h-8 rounded-full object-cover" />
+                         <LazyImage src={`http://localhost:3000${detail.friend.avatar_url}`} alt="" className="w-8 h-8 rounded-full object-cover" />
                        ) : (
                          <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center text-sm">
                            {detail.friend.display_name.charAt(0).toUpperCase()}

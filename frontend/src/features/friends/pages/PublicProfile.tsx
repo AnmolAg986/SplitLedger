@@ -1,3 +1,4 @@
+import { LazyImage } from '../../../shared/components/LazyImage';
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../shared/api/axios';
@@ -79,7 +80,7 @@ export const PublicProfile = () => {
         <div className="w-full max-w-md bg-white/[0.02] border border-white/10 rounded-[2rem] p-8 shadow-2xl backdrop-blur-xl relative z-10 flex flex-col items-center animate-in fade-in zoom-in-95 duration-500">
           <div className="w-28 h-28 rounded-full bg-gradient-to-br from-amber-500/20 to-amber-600/10 border-2 border-amber-500/30 shadow-[0_0_30px_rgba(245,158,11,0.2)] flex items-center justify-center text-5xl font-black text-amber-400 mb-6 overflow-hidden">
             {profile.avatar_url ? (
-              <img src={`http://localhost:3000${profile.avatar_url}`} alt={profile.display_name} className="w-full h-full object-cover" />
+              <LazyImage src={`http://localhost:3000${profile.avatar_url}`} alt={profile.display_name} className="w-full h-full object-cover" />
             ) : (
               profile.display_name.charAt(0).toUpperCase()
             )}

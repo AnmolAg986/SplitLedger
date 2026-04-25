@@ -1,3 +1,4 @@
+import { LazyImage } from '../../shared/components/LazyImage';
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { Activity, LayoutDashboard, Settings, PanelLeft, PanelLeftClose, LogOut, Users, Receipt, User, Clock, Bell, Moon, Sun, Monitor } from 'lucide-react';
@@ -207,7 +208,7 @@ export const DashboardLayout = () => {
         <div className={`p-4 border-t border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-[#0a0a0c] flex items-center ${isCollapsed ? 'justify-center flex-col gap-4' : 'gap-3'}`}>
           <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-white/10 flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-white shrink-0 overflow-hidden">
             {user?.avatarUrl ? (
-              <img src={`http://localhost:3000${user.avatarUrl}`} alt={user?.displayName} className="w-full h-full object-cover" />
+              <LazyImage src={`http://localhost:3000${user.avatarUrl}`} alt={user?.displayName} className="w-full h-full object-cover" />
             ) : (
               user?.displayName?.charAt(0)?.toUpperCase()
             )}

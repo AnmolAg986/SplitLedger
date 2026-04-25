@@ -1,3 +1,4 @@
+import { LazyImage } from './LazyImage';
 import { useState, useEffect } from 'react';
 import { apiClient } from '../api/axios';
 import { X, CheckCircle2, Loader2, Banknote, Upload, Image as ImageIcon } from 'lucide-react';
@@ -136,7 +137,7 @@ export const SettleUpModal = ({ isOpen, onClose, onSuccess }: SettleUpModalProps
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-zinc-400 group-hover:bg-emerald-500/20 group-hover:text-emerald-400 transition-colors overflow-hidden">
                       {(person as any).avatar_url ? (
-                        <img src={`http://localhost:3000${(person as any).avatar_url}`} alt={person.display_name} className="w-full h-full object-cover" />
+                        <LazyImage src={`http://localhost:3000${(person as any).avatar_url}`} alt={person.display_name} className="w-full h-full object-cover" />
                       ) : (
                         person.display_name.charAt(0)
                       )}
