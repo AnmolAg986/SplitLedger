@@ -74,7 +74,7 @@ export class SettlementRepository {
     return res.rows[0] || null;
   }
 
-  static async getSettlements(userId: string) {
+  static async getSettlements(userId: string, limit: number = 100) {
     const res = await pool.query(
       `SELECT s.*,
               f.display_name as from_name,
@@ -83,8 +83,9 @@ export class SettlementRepository {
        JOIN users f ON s.from_user = f.id
        JOIN users t ON s.to_user = t.id
        WHERE s.from_user = $1 OR s.to_user = $1
-       ORDER BY s.created_at DESC`,
-      [userId]
+       ORDER BY s.created_at DESC
+       LIMIT $2`,
+      [userId, limit]
     );
     return res.rows;
   }
@@ -190,14 +191,15 @@ export class SettlementRepository {
     return res.rows[0];
   }
 
-  static async getHistory(settlementId: string) {
+  static async getHistory(settlementId: string, limit: number = 100) {
     const res = await pool.query(
       `SELECT h.*, u.display_name as actor_name
        FROM settlement_history h
        LEFT JOIN users u ON h.actor_id = u.id
        WHERE h.settlement_id = $1
-       ORDER BY h.created_at DESC`,
-      [settlementId]
+       ORDER BY h.created_at DESC
+       LIMIT $2`,
+      [settlementId, limit]
     );
     return res.rows;
   }

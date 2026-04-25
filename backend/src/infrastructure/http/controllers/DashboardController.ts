@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../types/Request';
 import { DashboardRepository } from '../../persistence/DashboardRepository';
 import { pool } from '../../../config/db';
+import { safeRedisGet, safeRedisSetEx } from '../../../config/redis';
 
 export class DashboardController {
 
@@ -67,6 +68,16 @@ export class DashboardController {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
+      const cacheKey = `dashboard:summary:${userId}`;
+      const cached = await safeRedisGet(cacheKey);
+      if (cached) {
+        try {
+          return res.status(200).json(JSON.parse(cached));
+        } catch (e) {
+          console.warn('[DashboardController] Failed to parse cached dashboard');
+        }
+      }
+
       const [metrics, onboarding, insights, recentActivity, focusInsight, advanced] = await Promise.all([
         DashboardRepository.getMetrics(userId),
         DashboardRepository.hasOnboarded(userId),
@@ -76,14 +87,18 @@ export class DashboardController {
         DashboardRepository.getAdvancedInsights(userId),
       ]);
 
-      return res.status(200).json({
+      const responseData = {
         metrics,
         onboarding,
         insights,
         recentActivity,
         focusInsight,
         advanced,
-      });
+      };
+
+      await safeRedisSetEx(cacheKey, 120, JSON.stringify(responseData));
+
+      return res.status(200).json(responseData);
     } catch (e: unknown) {
       console.error('[DashboardController] getSummary error:', e);
       return res.status(500).json({ error: 'Internal server error while fetching dashboard.' });

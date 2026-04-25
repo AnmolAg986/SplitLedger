@@ -1,4 +1,5 @@
 import { pool } from '../../config/db';
+import { Cacheable, invalidateCache } from './CachingRepository';
 
 export interface RefreshToken {
   id: string;
@@ -29,11 +30,13 @@ export class RefreshTokenRepository {
     };
   }
 
+  @Cacheable('rt', (hash: string) => hash, 86400) // 24h
   static async findByHash(tokenHash: string): Promise<RefreshToken | null> {
-    const res = await pool.query(
-      `SELECT * FROM refresh_tokens WHERE token_hash = $1`,
-      [tokenHash]
-    );
+    const res = await pool.query({
+      name: 'fetch-refresh-token-by-hash',
+      text: `SELECT * FROM refresh_tokens WHERE token_hash = $1`,
+      values: [tokenHash]
+    });
     if (res.rows.length === 0) return null;
     const row = res.rows[0];
     return {
@@ -48,23 +51,30 @@ export class RefreshTokenRepository {
   }
 
   static async revokeToken(tokenId: string): Promise<void> {
-    await pool.query(
-      `UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1`,
+    const res = await pool.query(
+      `UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1 RETURNING token_hash`,
       [tokenId]
     );
+    if (res.rows[0]) await invalidateCache('rt', res.rows[0].token_hash);
   }
 
   static async revokeFamily(familyId: string): Promise<void> {
-    await pool.query(
-      `UPDATE refresh_tokens SET revoked_at = now() WHERE family_id = $1`,
+    const res = await pool.query(
+      `UPDATE refresh_tokens SET revoked_at = now() WHERE family_id = $1 RETURNING token_hash`,
       [familyId]
     );
+    for (const row of res.rows) {
+      await invalidateCache('rt', row.token_hash);
+    }
   }
 
   static async revokeAllForUser(userId: string): Promise<void> {
-    await pool.query(
-      `UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1`,
+    const res = await pool.query(
+      `UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 RETURNING token_hash`,
       [userId]
     );
+    for (const row of res.rows) {
+      await invalidateCache('rt', row.token_hash);
+    }
   }
 }

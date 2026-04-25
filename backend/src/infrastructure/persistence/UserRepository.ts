@@ -26,10 +26,10 @@ export class UserRepository {
   static async findByIdentifier(identifier: string): Promise<User | null> {
     const isPhone = /^\+?\d+$/.test(identifier);
     const query = isPhone 
-      ? 'SELECT * FROM users WHERE phone_number = $1' 
-      : 'SELECT * FROM users WHERE email = $1 OR lower(username) = lower($1)';
+      ? { name: 'fetch-user-by-phone', text: 'SELECT * FROM users WHERE phone_number = $1', values: [identifier] }
+      : { name: 'fetch-user-by-email', text: 'SELECT * FROM users WHERE email = $1 OR lower(username) = lower($1)', values: [identifier] };
       
-    const res = await pool.query(query, [identifier]);
+    const res = await pool.query(query);
     if (res.rows.length === 0) return null;
     const row = res.rows[0];
     return {
@@ -56,7 +56,7 @@ export class UserRepository {
   }
 
   static async findById(id: string): Promise<User | null> {
-    const res = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+    const res = await pool.query({ name: 'fetch-user-by-id', text: 'SELECT * FROM users WHERE id = $1', values: [id] });
     if (res.rows.length === 0) return null;
     const row = res.rows[0];
     return {

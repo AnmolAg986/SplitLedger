@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import { createServer } from 'http';
 import { errorHandler } from './infrastructure/http/middleware/errorHandler';
 import { env } from './config/env';
@@ -39,6 +40,9 @@ const port = env.PORT;
 
 // Apply global rate limiter
 app.use(globalLimiter);
+
+// Gzip/deflate all responses (14.5)
+app.use(compression());
 
 // Add Request ID
 app.use(requestIdMiddleware);
@@ -100,7 +104,13 @@ app.use('/budgets', budgetRoutes);
 app.use('/blocks', blockRoutes);
 app.use('/users', userRoutes);
 
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
+  etag: true,
+  maxAge: '365d',
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
+  }
+}));
 
 import { pool } from './config/db';
 

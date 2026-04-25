@@ -130,10 +130,15 @@ export class ChatRepository {
        JOIN users u ON ins.sender_id = u.id`,
       [groupId, senderId, content, replyToId || null, linkPreviewId, attachmentUrl || null, attachmentType || null]
     );
-    const membersRes = await pool.query(`SELECT user_id FROM group_members WHERE group_id = $1 AND user_id != $2`, [groupId, senderId]);
-    for (const member of membersRes.rows) {
-      await UnreadRepository.increment(member.user_id, 'group', groupId, 'chat');
-    }
+    // Bulk increment unread counts for all members except sender
+    await pool.query(`
+      INSERT INTO unread_counts (user_id, entity_type, entity_id, section, count, last_activity)
+      SELECT user_id, 'group', $1, 'chat', 1, now()
+      FROM group_members WHERE group_id = $1 AND user_id != $2
+      ON CONFLICT (user_id, entity_type, entity_id, section)
+      DO UPDATE SET count = unread_counts.count + 1, last_activity = now()
+    `, [groupId, senderId]);
+
     return res.rows[0];
   }
 

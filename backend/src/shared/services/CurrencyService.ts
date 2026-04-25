@@ -1,3 +1,5 @@
+import { safeRedisGet, safeRedisSetEx } from '../../config/redis';
+
 /**
  * CurrencyService
  *
@@ -13,15 +15,6 @@
  * expense creation.
  */
 
-interface RatesCache {
-  base: string;
-  rates: Record<string, number>;
-  fetchedAt: number; // ms timestamp
-}
-
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-let ratesCache: RatesCache | null = null;
-
 async function fetchRates(): Promise<Record<string, number>> {
   try {
     const res = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
@@ -35,13 +28,20 @@ async function fetchRates(): Promise<Record<string, number>> {
 }
 
 async function getRates(): Promise<Record<string, number>> {
-  const now = Date.now();
-  if (ratesCache && now - ratesCache.fetchedAt < CACHE_TTL_MS) {
-    return ratesCache.rates;
+  const cacheKey = 'exchange_rates:latest';
+  const cached = await safeRedisGet(cacheKey);
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch (e) {
+      console.warn('[CurrencyService] Failed to parse cached exchange rates');
+    }
   }
 
   const rates = await fetchRates();
-  ratesCache = { base: 'USD', rates, fetchedAt: now };
+  if (Object.keys(rates).length > 0) {
+    await safeRedisSetEx(cacheKey, 3600, JSON.stringify(rates));
+  }
   return rates;
 }
 

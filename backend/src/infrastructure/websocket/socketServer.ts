@@ -1,5 +1,7 @@
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
+import Redis from 'ioredis';
 import { verifyAccessToken } from '../../shared/utils/jwt';
 import { ChatRepository } from '../persistence/ChatRepository';
 import { UserRepository } from '../persistence/UserRepository';
@@ -16,6 +18,20 @@ export function initSocketServer(httpServer: HttpServer) {
       credentials: true
     }
   });
+
+  // Attach Redis adapter for multi-server pub/sub (14.6)
+  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  const pubClient = new Redis(redisUrl);
+  const subClient = pubClient.duplicate();
+  pubClient.on('error', (err) => console.warn('[Socket.IO] Redis pub error:', err.message));
+  subClient.on('error', (err) => console.warn('[Socket.IO] Redis sub error:', err.message));
+  Promise.all([pubClient.ping(), subClient.ping()]).then(() => {
+    io.adapter(createAdapter(pubClient, subClient));
+    console.log('[Socket.IO] Redis adapter attached');
+  }).catch((err) => {
+    console.warn('[Socket.IO] Redis adapter not available, falling back to in-memory:', err.message);
+  });
+
   ioInstance = io;
 
   // JWT authentication middleware for Socket.IO

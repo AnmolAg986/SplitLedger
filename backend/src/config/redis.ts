@@ -1,12 +1,19 @@
-import { createClient, RedisClientType } from 'redis';
+import Redis from 'ioredis';
 
-let redisClient: RedisClientType | null = null;
+let redisClient: Redis | null = null;
 let redisReady = false;
 
-const initRedis = async () => {
+const initRedis = () => {
   try {
-    const client = createClient({
-      url: process.env.REDIS_URL || 'redis://localhost:6379'
+    const client = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+      retryStrategy(times) {
+        if (times > 5) {
+          console.warn('[Redis] ⚠️ Retries exhausted. Caching disabled for local dev.');
+          return null;
+        }
+        return Math.min(times * 50, 2000);
+      },
+      maxRetriesPerRequest: 3,
     });
 
     client.on('error', (err) => {
@@ -18,13 +25,12 @@ const initRedis = async () => {
 
     client.on('ready', () => {
       redisReady = true;
-      console.log('[Redis] ✅ Connected');
+      console.log('[Redis] ✅ Connected via ioredis');
     });
 
-    await client.connect();
-    redisClient = client as RedisClientType;
+    redisClient = client;
   } catch (err) {
-    console.warn('[Redis] ⚠️ Could not connect to Redis. Token blacklisting disabled for local dev.');
+    console.warn('[Redis] ⚠️ Could not connect to Redis. Caching disabled.');
     redisClient = null;
     redisReady = false;
   }
@@ -48,9 +54,18 @@ export const safeRedisGet = async (key: string): Promise<string | null> => {
 export const safeRedisSetEx = async (key: string, ttl: number, value: string): Promise<void> => {
   if (!redisClient || !redisReady) return;
   try {
-    await redisClient.setEx(key, ttl, value);
+    await redisClient.setex(key, ttl, value);
   } catch {
     // silently skip if Redis is not available
+  }
+};
+
+export const safeRedisDel = async (key: string): Promise<void> => {
+  if (!redisClient || !redisReady) return;
+  try {
+    await redisClient.del(key);
+  } catch {
+    // silently skip
   }
 };
 

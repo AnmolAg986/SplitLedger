@@ -6,6 +6,7 @@ import { UnreadRepository } from '../../persistence/UnreadRepository';
 import { ioInstance } from '../../websocket/socketServer';
 import { NotificationService as NotificationSys } from '../../../application/services/NotificationService';
 import { AuditLogRepository } from '../../persistence/AuditLogRepository';
+import { invalidateCache } from '../../persistence/CachingRepository';
 
 export class SettlementController {
 
@@ -55,6 +56,10 @@ export class SettlementController {
         console.error('Failed to update unread counts or notify:', e);
       }
 
+      if (groupId) {
+        await invalidateCache('gb', groupId);
+      }
+
       await AuditLogRepository.log(userId, 'settlement_create', 'settlement', settlement.id, req.ip || null, req.headers['user-agent'] || null);
 
       return res.status(201).json(settlement);
@@ -83,6 +88,10 @@ export class SettlementController {
         settlement.id, 'created', userId,
         `Recurring settlement setup (${recurringInterval}) — first due ${nextDate}`
       );
+
+      if (groupId) {
+        await invalidateCache('gb', groupId);
+      }
 
       return res.status(201).json(settlement);
     } catch (err) {
@@ -242,6 +251,7 @@ export class SettlementController {
 
       const groupId = req.params.id as string;
       await SettlementRepository.settleAllGroupMutual(groupId, userId);
+      await invalidateCache('gb', groupId);
       return res.status(200).json({ message: 'All outstanding group debts settled successfully' });
     } catch (err) {
       console.error('[SettlementController] settleAllGroupMutual error:', err);

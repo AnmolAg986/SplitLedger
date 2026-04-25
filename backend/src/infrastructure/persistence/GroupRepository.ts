@@ -1,4 +1,5 @@
 import { pool } from '../../config/db';
+import { Cacheable } from './CachingRepository';
 
 export class GroupRepository {
 
@@ -20,15 +21,15 @@ export class GroupRepository {
         [group.id, createdBy]
       );
 
-      // Add other members
-      for (const memberId of memberIds) {
-        if (memberId !== createdBy) {
-          await client.query(
-            `INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'member')
-             ON CONFLICT DO NOTHING`,
-            [group.id, memberId]
-          );
-        }
+      // Add other members bulk
+      const otherMembers = memberIds.filter(id => id !== createdBy);
+      if (otherMembers.length > 0) {
+        await client.query(
+          `INSERT INTO group_members (group_id, user_id, role)
+           SELECT $1, unnest($2::uuid[]), 'member'
+           ON CONFLICT DO NOTHING`,
+          [group.id, otherMembers]
+        );
       }
 
       await client.query('COMMIT');
@@ -85,6 +86,7 @@ export class GroupRepository {
     return (res.rowCount ?? 0) > 0;
   }
 
+  @Cacheable('gb', (groupId: string) => groupId, 86400)
   static async getGroupBalances(groupId: string) {
     // For each pair of users, calculate net balance
     const res = await pool.query(
@@ -232,6 +234,7 @@ export class GroupRepository {
     );
   }
 
+  @Cacheable('invite', (token: string) => token, 1800)
   static async findByInviteToken(token: string) {
     const res = await pool.query(
       `SELECT * FROM groups WHERE invite_token = $1`, [token]

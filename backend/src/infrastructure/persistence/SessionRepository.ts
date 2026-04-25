@@ -1,4 +1,5 @@
 import { pool } from '../../config/db';
+import { Cacheable, invalidateCache } from './CachingRepository';
 
 export interface UserSession {
   id: string;
@@ -22,37 +23,46 @@ export class SessionRepository {
        VALUES ($1, $2, $3, $4) RETURNING *`,
       [userId, refreshTokenId, ipAddress || null, userAgent || null]
     );
+    await invalidateCache('sessions', userId);
     return this.mapRow(res.rows[0]);
   }
 
+  @Cacheable('sessions', (userId: string) => userId, 3600)
   static async findByUserId(userId: string): Promise<UserSession[]> {
-    const res = await pool.query(
-      `SELECT us.* FROM user_sessions us
+    const res = await pool.query({
+      name: 'fetch-sessions-by-user-id',
+      text: `SELECT us.* FROM user_sessions us
        JOIN refresh_tokens rt ON rt.id = us.refresh_token_id
        WHERE us.user_id = $1 AND rt.revoked_at IS NULL AND rt.expires_at > now()
        ORDER BY us.last_active DESC`,
-      [userId]
-    );
+      values: [userId]
+    });
     return res.rows.map(this.mapRow);
   }
 
   static async findById(sessionId: string): Promise<UserSession | null> {
-    const res = await pool.query(
-      `SELECT * FROM user_sessions WHERE id = $1`,
-      [sessionId]
-    );
+    const res = await pool.query({
+      name: 'fetch-session-by-id',
+      text: `SELECT * FROM user_sessions WHERE id = $1`,
+      values: [sessionId]
+    });
     if (res.rows.length === 0) return null;
     return this.mapRow(res.rows[0]);
   }
 
   static async deleteSession(sessionId: string): Promise<void> {
-    // Also revoke the associated refresh token
-    await pool.query(
-      `UPDATE refresh_tokens SET revoked_at = now()
-       WHERE id = (SELECT refresh_token_id FROM user_sessions WHERE id = $1)`,
-      [sessionId]
-    );
-    await pool.query(`DELETE FROM user_sessions WHERE id = $1`, [sessionId]);
+    const res = await pool.query(`SELECT user_id FROM user_sessions WHERE id = $1`, [sessionId]);
+    if (res.rows[0]) {
+      const userId = res.rows[0].user_id;
+      // Also revoke the associated refresh token
+      await pool.query(
+        `UPDATE refresh_tokens SET revoked_at = now()
+         WHERE id = (SELECT refresh_token_id FROM user_sessions WHERE id = $1)`,
+        [sessionId]
+      );
+      await pool.query(`DELETE FROM user_sessions WHERE id = $1`, [sessionId]);
+      await invalidateCache('sessions', userId);
+    }
   }
 
   static async deleteAllOtherSessions(userId: string, currentRefreshTokenId: string): Promise<void> {
@@ -66,6 +76,7 @@ export class SessionRepository {
       `DELETE FROM user_sessions WHERE user_id = $1 AND refresh_token_id != $2`,
       [userId, currentRefreshTokenId]
     );
+    await invalidateCache('sessions', userId);
   }
 
   static async updateLastActive(sessionId: string): Promise<void> {
@@ -76,10 +87,15 @@ export class SessionRepository {
   }
 
   static async deleteByRefreshTokenId(refreshTokenId: string): Promise<void> {
-    await pool.query(
-      `DELETE FROM user_sessions WHERE refresh_token_id = $1`,
-      [refreshTokenId]
-    );
+    const res = await pool.query(`SELECT user_id FROM user_sessions WHERE refresh_token_id = $1`, [refreshTokenId]);
+    if (res.rows[0]) {
+      const userId = res.rows[0].user_id;
+      await pool.query(
+        `DELETE FROM user_sessions WHERE refresh_token_id = $1`,
+        [refreshTokenId]
+      );
+      await invalidateCache('sessions', userId);
+    }
   }
 
   private static mapRow(row: any): UserSession {

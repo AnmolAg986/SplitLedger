@@ -48,22 +48,25 @@ export class ExpenseRepository {
       );
       const expense = expenseRes.rows[0];
 
-      // Insert splits
-      for (const split of input.splits) {
+      // Bulk insert splits
+      if (input.splits.length > 0) {
+        const userIds = input.splits.map(s => s.userId);
+        const amounts = input.splits.map(s => s.amount);
+        const shares = input.splits.map(s => s.shares || 1);
         await client.query(
           `INSERT INTO expense_splits (expense_id, user_id, amount, currency, shares)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [expense.id, split.userId, split.amount, input.currency, split.shares || 1]
+           SELECT $1, unnest($2::uuid[]), unnest($3::numeric[]), $4, unnest($5::numeric[])`,
+          [expense.id, userIds, amounts, input.currency, shares]
         );
       }
 
       if (input.tags && input.tags.length > 0) {
-        for (const tag of input.tags) {
-          await client.query(
-            `INSERT INTO expense_tags (expense_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-            [expense.id, tag]
-          );
-        }
+        await client.query(
+          `INSERT INTO expense_tags (expense_id, tag) 
+           SELECT $1, unnest($2::text[])
+           ON CONFLICT DO NOTHING`,
+          [expense.id, input.tags]
+        );
       }
 
       await client.query('COMMIT');
@@ -162,23 +165,26 @@ export class ExpenseRepository {
 
       if (updates.splits && updates.splits.length > 0) {
         await client.query(`DELETE FROM expense_splits WHERE expense_id = $1`, [expenseId]);
-        for (const split of updates.splits) {
-          await client.query(
-            `INSERT INTO expense_splits (expense_id, user_id, amount, currency, shares)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [expenseId, split.userId, split.amount, currency, split.shares || 1]
-          );
-        }
+        const userIds = updates.splits.map(s => s.userId);
+        const amounts = updates.splits.map(s => s.amount);
+        const shares = updates.splits.map(s => s.shares || 1);
+        await client.query(
+          `INSERT INTO expense_splits (expense_id, user_id, amount, currency, shares)
+           SELECT $1, unnest($2::uuid[]), unnest($3::numeric[]), $4, unnest($5::numeric[])`,
+          [expenseId, userIds, amounts, currency, shares]
+        );
       }
 
-      if (updates.tags) {
+      if (updates.tags && updates.tags.length > 0) {
         await client.query(`DELETE FROM expense_tags WHERE expense_id = $1`, [expenseId]);
-        for (const tag of updates.tags) {
-          await client.query(
-            `INSERT INTO expense_tags (expense_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-            [expenseId, tag]
-          );
-        }
+        await client.query(
+          `INSERT INTO expense_tags (expense_id, tag) 
+           SELECT $1, unnest($2::text[])
+           ON CONFLICT DO NOTHING`,
+          [expenseId, updates.tags]
+        );
+      } else if (updates.tags && updates.tags.length === 0) {
+        await client.query(`DELETE FROM expense_tags WHERE expense_id = $1`, [expenseId]);
       }
 
       await client.query('COMMIT');

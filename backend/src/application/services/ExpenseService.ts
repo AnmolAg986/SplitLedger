@@ -10,6 +10,7 @@ import { pool } from '../../config/db';
 
 import { NotificationService as NotificationSys } from './NotificationService';
 import { GroupActivityRepository } from '../../infrastructure/persistence/GroupActivityRepository';
+import { invalidateCache } from '../../infrastructure/persistence/CachingRepository';
 
 export interface CreateExpenseServiceInput {
   groupId?: string | null;
@@ -134,6 +135,7 @@ export class ExpenseService {
         currency: input.currency,
         subcategory: input.subcategory
       });
+      await invalidateCache('gb', input.groupId);
     }
 
     return expense;
@@ -169,6 +171,10 @@ export class ExpenseService {
     if (updated === 'LOCKED') throw new AppError(403, 'FORBIDDEN', 'Cannot edit a locked expense');
     if (!updated) throw new AppError(404, 'EXPENSE_NOT_FOUND', 'Expense not found or not authorized');
 
+    if (updated.group_id) {
+      await invalidateCache('gb', updated.group_id);
+    }
+
     return updated;
   }
 
@@ -179,6 +185,11 @@ export class ExpenseService {
   }
 
   static async deleteExpense(expenseId: string, userId: string) {
+    const expense = await ExpenseRepository.getExpenseById(expenseId);
+    if (expense?.group_id) {
+      await invalidateCache('gb', expense.group_id);
+    }
+
     const deleted = await ExpenseRepository.deleteExpense(expenseId, userId);
     if (deleted === 'LOCKED') throw new AppError(403, 'FORBIDDEN', 'Cannot delete a locked expense');
     if (!deleted) throw new AppError(404, 'EXPENSE_NOT_FOUND', 'Expense not found or not authorized');
