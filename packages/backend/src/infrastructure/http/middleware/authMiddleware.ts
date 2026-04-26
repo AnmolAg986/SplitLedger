@@ -28,6 +28,14 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
     if (isBlacklisted) return res.status(401).json({ error: 'Token revoked' });
 
     const payload = verifyAccessToken(token);
+    
+    // Check if user is disabled
+    const { pool } = require('../../../config/db');
+    const userRes = await pool.query('SELECT is_disabled FROM users WHERE id = $1', [payload.userId]);
+    if (userRes.rows.length === 0 || userRes.rows[0].is_disabled) {
+      return res.status(403).json({ error: 'Account disabled' });
+    }
+
     req.user = { id: payload.userId };
     next();
   } catch (err) {

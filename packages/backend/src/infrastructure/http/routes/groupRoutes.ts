@@ -20,6 +20,7 @@ router.get('/:id/invite-qr', requireAuth, GroupController.getInviteQR);
 router.get('/:id/permissions', requireAuth, GroupController.getMyPermissions);
 router.get('/:id/activity', requireAuth, GroupController.getActivity);
 router.post('/join', requireAuth, GroupController.joinGroupByToken);
+router.post('/:id/join-via-link', requireAuth, GroupController.joinViaLink);
 router.put('/:id', requireAuth, GroupController.updateGroup);
 router.post('/:id/archive', requireAuth, GroupController.archiveGroup);
 router.get('/:id/templates', requireAuth, GroupController.getGroupTemplates);

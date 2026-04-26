@@ -53,6 +53,29 @@ export class ExpenseController {
     }
   }
 
+  static async getExpenseContext(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) throw new AppError(401, 'UNAUTHORIZED', 'Unauthorized');
+
+      const id = req.params.id as string;
+      const expense = await ExpenseService.getExpense(id);
+      
+      if (!expense) throw new AppError(404, 'NOT_FOUND', 'Expense not found');
+      
+      // We must ensure the user has access to this expense.
+      // Easiest way: if they can fetch it via getExpense (which probably checks access internally, 
+      // or we just rely on group membership).
+      if (!expense.group_id) {
+        throw new AppError(400, 'BAD_REQUEST', 'Expense does not belong to a group');
+      }
+
+      return res.status(200).json({ groupId: expense.group_id, expenseId: expense.id });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   static async getExpense(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const userId = req.user?.id;

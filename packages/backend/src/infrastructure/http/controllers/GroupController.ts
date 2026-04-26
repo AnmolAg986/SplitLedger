@@ -314,6 +314,36 @@ export class GroupController {
     }
   }
 
+  static async joinViaLink(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const groupId = req.params.id as string;
+      const group = await GroupRepository.getGroupDetail(groupId);
+      if (!group) return res.status(404).json({ error: 'Group not found' });
+
+      const isMember = await GroupRepository.isGroupMember(groupId, userId);
+      if (isMember) return res.status(200).json({ message: 'Already a member' });
+
+      // Direct link join respects requires_approval logic
+      const status = group.requires_approval ? 'pending' : 'accepted';
+      await GroupRepository.addMember(groupId, userId, status);
+
+      GroupActivityRepository.log(groupId, userId, 'member_joined', {
+        display_name: undefined, status, method: 'link'
+      });
+
+      return res.status(200).json({ 
+        message: status === 'pending' ? 'Join request sent. Pending admin approval.' : 'Joined successfully', 
+        groupId: group.id 
+      });
+    } catch (err) {
+      console.error('[GroupController] joinViaLink error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
   static async archiveGroup(req: AuthenticatedRequest, res: Response) {
     try {
       const requesterId = req.user?.id;

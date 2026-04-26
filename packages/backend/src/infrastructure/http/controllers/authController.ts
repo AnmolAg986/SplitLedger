@@ -413,11 +413,26 @@ export class AuthController {
         return res.status(404).json({ error: 'User not found' });
       }
 
+      let mutual_groups_count = 0;
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        try {
+          const payload = jwt.verify(token, env.JWT_SECRET) as any;
+          if (payload.userId && payload.userId !== user.id) {
+            mutual_groups_count = await UserRepository.getMutualGroupsCount(payload.userId, user.id);
+          }
+        } catch (e) {
+          // Ignore invalid token for public profile, just return 0 mutual groups
+        }
+      }
+
       return res.status(200).json({
         id: user.id,
         display_name: user.displayName,
         avatar_url: user.avatarUrl,
-        username: user.username
+        username: user.username,
+        mutual_groups_count
       });
     } catch (e) {
       console.error('[AuthController] getPublicProfile error:', e);

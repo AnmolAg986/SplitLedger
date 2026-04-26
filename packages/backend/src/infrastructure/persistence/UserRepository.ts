@@ -81,6 +81,16 @@ export class UserRepository {
     };
   }
 
+  static async getMutualGroupsCount(userIdA: string, userIdB: string): Promise<number> {
+    const res = await pool.query(
+      `SELECT COUNT(*) FROM group_members gm1 
+       JOIN group_members gm2 ON gm1.group_id = gm2.group_id 
+       WHERE gm1.user_id = $1 AND gm2.user_id = $2`,
+      [userIdA, userIdB]
+    );
+    return parseInt(res.rows[0].count, 10) || 0;
+  }
+
   static async create(email: string | null, phoneNumber: string | null, displayName: string, passwordHash?: string, username?: string | null): Promise<User> {
     const res = await pool.query(
       `INSERT INTO users (email, phone_number, display_name, password_hash, username)

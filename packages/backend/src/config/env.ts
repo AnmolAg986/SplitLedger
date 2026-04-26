@@ -8,9 +8,11 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(10).default('your-32-char-secret-here'),
   JWT_REFRESH_SECRET: z.string().min(10).default('another-32-char-secret'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  CORS_ORIGIN: z.string().default('*'),
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
-  REDIS_URL: z.string().optional()
+  REDIS_URL: z.string().optional(),
+  SENTRY_DSN: z.string().optional(),
+  ADMIN_SECRET: z.string().default('supersecretadmin'),
 });
 
 const _env = envSchema.safeParse(process.env);

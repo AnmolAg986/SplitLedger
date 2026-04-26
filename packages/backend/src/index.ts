@@ -18,6 +18,9 @@ import expenseTemplateRoutes from './infrastructure/http/routes/expenseTemplateR
 import settlementRoutes from './infrastructure/http/routes/settlementRoutes';
 import chatRoutes from './infrastructure/http/routes/chatRoutes';
 import uploadRoutes from './infrastructure/http/routes/uploadRoutes';
+import searchRoutes from './infrastructure/http/routes/searchRoutes';
+import adminRoutes from './infrastructure/http/routes/adminRoutes';
+import systemRoutes from './infrastructure/http/routes/systemRoutes';
 import unreadRoutes from './infrastructure/http/routes/unreadRoutes';
 import notificationRoutes from './infrastructure/http/routes/notificationRoutes';
 import analyticsRoutes from './infrastructure/http/routes/analyticsRoutes';
@@ -131,6 +134,9 @@ app.use('/analytics', analyticsRoutes);
 app.use('/budgets', budgetRoutes);
 app.use('/blocks', blockRoutes);
 app.use('/users', userRoutes);
+app.use('/system', systemRoutes);
+app.use('/search', searchRoutes);
+app.use('/admin', adminRoutes);
 
 app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
   etag: true,

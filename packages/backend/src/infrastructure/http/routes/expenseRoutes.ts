@@ -10,6 +10,7 @@ import { SettlementController } from '../controllers/SettlementController';
 const router = Router();
 
 router.post('/', requireAuth, validate(createExpenseSchema), ExpenseController.createExpense);
+router.get('/:id/context', requireAuth, ExpenseController.getExpenseContext);
 router.get('/:id', requireAuth, ExpenseController.getExpense);
 router.put('/:id', requireAuth, validate(updateExpenseSchema), ExpenseController.updateExpense);
 router.delete('/:id', requireAuth, ExpenseController.deleteExpense);
