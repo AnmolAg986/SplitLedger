@@ -19,5 +19,32 @@ services:
     ports:
       - "6379:6379"
 
+  backend:
+    build:
+      context: ./packages/backend
+      dockerfile: Dockerfile
+    container_name: splitledger-backend
+    environment:
+      - DATABASE_URL=postgres://sl:sl@db:5432/splitledger
+      - REDIS_URL=redis://redis:6379
+      - PORT=3000
+      - NODE_ENV=production
+      - CORS_ORIGIN=http://localhost
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+      - redis
+
+  frontend:
+    build:
+      context: ./packages/frontend
+      dockerfile: Dockerfile
+    container_name: splitledger-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
 volumes:
   postgres-data:

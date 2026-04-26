@@ -1,0 +1,33 @@
+name: Daily Database Backup
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Run daily at 2:00 AM UTC
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install PostgreSQL Client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Create Database Backup
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          echo "Dumping database..."
+          pg_dump $DATABASE_URL -F c > backup-$(date +'%Y-%m-%d').dump
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Upload to S3
+        env:
+          S3_BUCKET: ${{ secrets.S3_BACKUP_BUCKET }}
+        run: |
+          aws s3 cp backup-$(date +'%Y-%m-%d').dump s3://$S3_BUCKET/db-backups/backup-$(date +'%Y-%m-%d').dump
