@@ -7,6 +7,8 @@ import path from 'path';
 export class UploadController {
   static async uploadImage(req: AuthenticatedRequest, res: Response) {
     try {
+      const { default: sharp } = await import('sharp');
+
       if (!req.file) {
         return res.status(400).json({ error: 'No file provided' });
       }
@@ -21,7 +23,6 @@ export class UploadController {
         .webp({ quality: 80 })
         .toFile(webpPath);
 
-      // Delete original file
       fs.unlinkSync(originalPath);
 
       const url = `/uploads/${webpFilename}`;
@@ -31,6 +32,7 @@ export class UploadController {
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
+
 
   static async uploadVoice(req: AuthenticatedRequest, res: Response) {
     try {

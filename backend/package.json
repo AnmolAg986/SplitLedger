@@ -4,7 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run -c vitest.integration.config.ts",
+    "test:ci": "vitest run && vitest run -c vitest.integration.config.ts",
     "dev": "ts-node-dev src/index.ts",
     "migrate": "ts-node-dev scripts/migrate.ts"
   },
@@ -14,6 +18,7 @@
   "type": "commonjs",
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
+    "@splitledger/shared": "*",
     "@types/qrcode": "^1.5.6",
     "bcrypt": "^6.0.0",
     "compression": "^1.8.1",
@@ -55,12 +60,16 @@
     "@types/nodemailer": "^8.0.0",
     "@types/open-graph-scraper": "^4.8.5",
     "@types/pg": "^8.20.0",
+    "@types/supertest": "^7.2.0",
     "@types/uuid": "^10.0.0",
     "@types/web-push": "^3.6.4",
+    "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^10.2.0",
     "pino-pretty": "^13.1.3",
     "prettier": "^3.8.3",
+    "supertest": "^7.2.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^2.1.9"
   }
 }

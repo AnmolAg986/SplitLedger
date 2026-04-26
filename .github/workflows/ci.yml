@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: sl
+          POSTGRES_PASSWORD: sl
+          POSTGRES_DB: splitledger_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Use Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: 'package-lock.json'
+
+    - name: Install All Dependencies
+      run: npm ci --include=optional
+
+    - name: Reinstall Sharp for Linux
+      working-directory: ./backend
+      run: |
+        npm uninstall sharp
+        npm install --os=linux --cpu=x64 sharp
+
+    - name: TypeScript Check (Backend)
+      working-directory: ./backend
+      run: npx tsc --noEmit
+
+    - name: Run Backend Unit Tests
+      working-directory: ./backend
+      env:
+        DATABASE_URL: postgres://sl:sl@localhost:5432/splitledger_test
+        NODE_ENV: test
+        JWT_SECRET: test-secret-min-10-chars-here
+        JWT_REFRESH_SECRET: test-refresh-secret-min-10-chars
+        REDIS_URL: redis://localhost:6379
+      run: npm run test
+
+    - name: Run Backend Integration Tests
+      working-directory: ./backend
+      env:
+        DATABASE_URL: postgres://sl:sl@localhost:5432/splitledger_test
+        NODE_ENV: test
+        JWT_SECRET: test-secret-min-10-chars-here
+        JWT_REFRESH_SECRET: test-refresh-secret-min-10-chars
+        REDIS_URL: redis://localhost:6379
+      run: npm run test:integration
+
+    - name: TypeScript Check (Frontend)
+      working-directory: ./frontend
+      run: npx tsc --noEmit
+
+    - name: Run Frontend Unit Tests
+      working-directory: ./frontend
+      run: npm run test
+
+    - name: Install Playwright Browsers
+      working-directory: ./frontend
+      run: npx playwright install --with-deps
+
+    - name: Run E2E Tests
+      working-directory: ./frontend
+      env:
+        DATABASE_URL: postgres://sl:sl@localhost:5432/splitledger_test
+        NODE_ENV: test
+        JWT_SECRET: test-secret-min-10-chars-here
+        JWT_REFRESH_SECRET: test-refresh-secret-min-10-chars
+        REDIS_URL: redis://localhost:6379
+        CI: true
+      run: npm run test:e2e

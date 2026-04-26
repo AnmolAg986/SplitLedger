@@ -3,6 +3,7 @@ import { GroupController } from '../controllers/GroupController';
 import { requireAuth } from '../middleware/authMiddleware';
 import { nudgeLimiter } from '../middleware/rateLimiter';
 import pollRoutes from './pollRoutes';
+import { SettlementController } from '../controllers/SettlementController';
 
 const router = Router();
 
@@ -31,7 +32,7 @@ router.put('/:id/members/:userId/role', requireAuth, GroupController.changeMembe
 router.post('/:id/members/:userId/approve', requireAuth, GroupController.approveMember);
 router.post('/:id/members/:userId/reject', requireAuth, GroupController.rejectMember);
 
-router.post('/:id/settle-all', requireAuth, require('../controllers/SettlementController').SettlementController.settleAllGroupMutual);
+router.post('/:id/settle-all', requireAuth, SettlementController.settleAllGroupMutual);
 router.post('/:id/lock-expenses', requireAuth, GroupController.lockExpenses);
 
 router.post('/:id/nudge/:userId', requireAuth, nudgeLimiter, (req, res) => GroupController.nudgeMember(req as any, res));

@@ -134,13 +134,17 @@ const io = initSocketServer(httpServer);
 app.set('io', io);
 
 const startServer = async () => {
-  httpServer.listen(port, () => {
-    console.log(`Server listening on port ${port}`);
-    startReminderJob();
-    startRecurringExpenseJob();
-    startBudgetAlertJob();
-    RecurringSettlementJob.start();
-  });
+  if (process.env.NODE_ENV !== 'test') {
+    httpServer.listen(port, () => {
+      console.log(`Server listening on port ${port}`);
+      startReminderJob();
+      startRecurringExpenseJob();
+      startBudgetAlertJob();
+      RecurringSettlementJob.start();
+    });
+  }
 };
 
 startServer();
+
+export { app, httpServer };

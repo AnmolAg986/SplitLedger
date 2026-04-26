@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
+import { registerSchema, loginSchema, identifierSchema } from '../../../shared/validation/authSchema';
 import { AuthenticatedRequest } from '../types/Request';
 import { UserRepository } from '../../persistence/UserRepository';
 import { hashPassword, verifyPassword } from '../../../shared/utils/hash';
@@ -40,22 +41,6 @@ async function createSession(
 
 const isPhone = (id: string) => /^\+?\d+$/.test(id);
 
-const identifierSchema = z.string().refine(val => {
-  return /^\+?\d{10,15}$/.test(val) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
-}, "Must be a valid email or E.164 phone number (e.g. +919876543210 or 9876543210)");
-
-const registerSchema = z.object({
-  identifier: identifierSchema,
-  password: z.string().min(8, "Password is too weak. Please use at least 8 characters.").regex(/^[a-zA-Z0-9]+$/, "Password can only contain letters and numbers (no special characters or spaces)"),
-  displayName: z.string().min(2),
-  username: z.string().min(3, "Username must be at least 3 characters").regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores").optional(),
-});
-
-const loginSchema = z.object({
-  identifier: identifierSchema,
-  password: z.string(),
-});
-
 export class AuthController {
   static async register(req: Request, res: Response) {
     try {
@@ -77,7 +62,9 @@ export class AuthController {
         const user = await UserRepository.create(emailVal, phoneVal, displayName, passwordHash, usernameVal);
         
         // Generate and send OTP
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otp = process.env.NODE_ENV === 'test' 
+          ? '123456' 
+          : Math.floor(100000 + Math.random() * 900000).toString();
         await UserRepository.storeOTP(user.id, otp);
         
         if (phoneVal) {
