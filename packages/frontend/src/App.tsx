@@ -14,6 +14,7 @@ import { ToastContainer } from './shared/components/ToastContainer';
 import { PWAPrompt } from './shared/components/PWAPrompt';
 import { CookieConsentBanner } from './shared/components/CookieConsentBanner';
 import { useThemeStore } from './shared/store/useThemeStore';
+import { A11yAnnouncer } from './shared/components/A11yAnnouncer';
 
 // Lazily loaded — only fetched when the user navigates to these routes (14.7)
 const FriendDetail = lazy(() => import('./features/friends/pages/FriendDetail').then(m => ({ default: m.FriendDetail })));
@@ -25,6 +26,11 @@ const PublicProfile = lazy(() => import('./features/friends/pages/PublicProfile'
 const Connections = lazy(() => import('./features/connections/pages/Connections').then(m => ({ default: m.Connections })));
 const NotificationPreferences = lazy(() => import('./features/profile/pages/NotificationPreferences').then(m => ({ default: m.NotificationPreferences })));
 const Analytics = lazy(() => import('./features/profile/pages/Analytics').then(m => ({ default: m.Analytics })));
+const ExpenseRedirect = lazy(() => import('./features/expenses/pages/ExpenseRedirect').then(m => ({ default: m.ExpenseRedirect })));
+
+const AdminLayout = lazy(() => import('./app/layouts/AdminLayout').then(m => ({ default: m.AdminLayout })));
+const AdminLogin = lazy(() => import('./features/admin/pages/AdminLogin').then(m => ({ default: m.AdminLogin })));
+const AdminDashboard = lazy(() => import('./features/admin/pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 
 const PageFallback = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
@@ -66,6 +72,7 @@ export const App = () => {
   return (
     <BrowserRouter>
       <ThemeManager />
+      <A11yAnnouncer />
       <ToastContainer />
       <PWAPrompt />
       <CookieConsentBanner />
@@ -89,6 +96,7 @@ export const App = () => {
               <Route path="/connections" element={<Connections />} />
               <Route path="/friends/:id" element={<FriendDetail />} />
               <Route path="/groups/:id" element={<GroupDetail />} />
+              <Route path="/expenses/:id" element={<ExpenseRedirect />} />
               <Route path="/join/:token" element={<JoinGroup />} />
               <Route path="/activity" element={<Activity />} />
               <Route path="/profile" element={<Profile />} />
@@ -100,6 +108,12 @@ export const App = () => {
               <Route path="/groups" element={<Navigate to="/connections?tab=groups" replace />} />
 
             </Route>
+          </Route>
+
+          {/* Admin Portal */}
+          <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

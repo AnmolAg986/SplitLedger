@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Search, UserPlus, CreditCard, Users, ArrowRight, X, TerminalSquare, Navigation, CheckCircle } from 'lucide-react';
+import { Search, UserPlus, CreditCard, Users, ArrowRight, X, TerminalSquare, Navigation, CheckCircle, MessageSquare, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Fuse from 'fuse.js';
 import { apiClient } from '../../../shared/api/axios';
@@ -22,7 +22,8 @@ const iconMap: Record<string, React.ElementType> = {
   Users,
   ArrowRight,
   CheckCircle,
-  Navigation
+  Navigation,
+  MessageSquare
 };
 
 export const CommandPalette = () => {
@@ -37,11 +38,14 @@ export const CommandPalette = () => {
   });
   const [friends, setFriends] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
+  const [backendResults, setBackendResults] = useState<PaletteItem[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Keyboard shortcut to open/close
   useEffect(() => {
@@ -80,6 +84,36 @@ export const CommandPalette = () => {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveIndex(0);
+
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    
+    if (query.trim().length > 0) {
+      setIsSearching(true);
+      searchTimeoutRef.current = setTimeout(async () => {
+        try {
+          const { data } = await apiClient.get(`/search?q=${encodeURIComponent(query.trim())}`);
+          const mapped: PaletteItem[] = data.map((d: any) => ({
+            id: d.id,
+            title: d.title,
+            subtitle: d.subtitle,
+            iconName: d.type === 'expense' ? 'CreditCard' : d.type === 'message' ? 'MessageSquare' : d.type === 'group' ? 'Users' : 'UserPlus',
+            colorClass: d.type === 'expense' ? 'text-emerald-400' : d.type === 'message' ? 'text-blue-400' : d.type === 'group' ? 'text-indigo-400' : 'text-amber-400',
+            bgClass: 'bg-white/5 border-white/10 group-hover:bg-white/10',
+            route: d.route,
+            type: d.type
+          }));
+          setBackendResults(mapped);
+        } catch (err) {
+          console.error('Search failed', err);
+          setBackendResults([]);
+        } finally {
+          setIsSearching(false);
+        }
+      }, 300);
+    } else {
+      setBackendResults([]);
+      setIsSearching(false);
+    }
   }, [query]);
 
   if (!isOpen) return null;
@@ -106,10 +140,18 @@ export const CommandPalette = () => {
     threshold: 0.3, // strict enough but allows typos
   });
 
-  const filteredItems = query.trim() ? fuse.search(query).map(r => r.item) : [];
+  const filteredLocalItems = query.trim() ? fuse.search(query).map(r => r.item) : [];
   
+  // Combine local filtered items with backend results (avoiding duplicates if any)
+  const allFiltered = [...filteredLocalItems];
+  backendResults.forEach(br => {
+    if (!allFiltered.find(i => i.id === br.id)) {
+      allFiltered.push(br);
+    }
+  });
+
   const displayList = query.trim() 
-    ? filteredItems 
+    ? allFiltered 
     : (recentIds.map(id => items.find(i => i.id === id)).filter(Boolean) as PaletteItem[]);
 
   if (displayList.length === 0 && !query.trim()) {
@@ -174,7 +216,11 @@ export const CommandPalette = () => {
         
         {/* Search Input Area */}
         <div className="flex items-center px-4 py-4 border-b border-white/10 bg-[#0a0a0c]">
-          <Search className="h-5 w-5 text-cyan-400 mr-3 shrink-0" strokeWidth={2.5} />
+          {isSearching ? (
+            <Loader2 className="h-5 w-5 text-cyan-400 mr-3 shrink-0 animate-spin" strokeWidth={2.5} />
+          ) : (
+            <Search className="h-5 w-5 text-cyan-400 mr-3 shrink-0" strokeWidth={2.5} />
+          )}
           <input 
             ref={inputRef}
             type="text" 

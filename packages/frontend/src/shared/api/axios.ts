@@ -2,7 +2,7 @@ import axios from 'axios';
 import { useAuthStore } from '../../app/store/useAuthStore';
 
 export const apiClient = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL || '${import.meta.env.VITE_API_URL || 'http://localhost:3000'}'}`,
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -34,7 +34,7 @@ apiClient.interceptors.response.use(
         const refreshToken = useAuthStore.getState().refreshToken;
         if (!refreshToken) throw error; // throw original to preserve the message
 
-        const { data } = await axios.post(`${import.meta.env.VITE_API_URL || '${import.meta.env.VITE_API_URL || 'http://localhost:3000'}'}/auth/refresh`, { refreshToken });
+        const { data } = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/auth/refresh`, { refreshToken });
         useAuthStore.getState().setTokens(data.accessToken, data.refreshToken);
         
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${data.accessToken}`;

@@ -104,6 +104,7 @@ export const ExpenseAttachments: React.FC<ExpenseAttachmentsProps> = ({ expenseI
           >
             <X className="w-5 h-5" />
           </button>
+          {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
           <img
             src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${previewUrl}`}
             alt="Receipt"

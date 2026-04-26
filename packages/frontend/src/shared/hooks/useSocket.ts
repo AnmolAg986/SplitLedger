@@ -4,7 +4,11 @@ import { useAuthStore } from '../../app/store/useAuthStore';
 
 let socketInstance: Socket | null = null;
 
-export const useSocket = () => {
+export const useSocket = (): {
+  on: (event: string, callback: (...args: any[]) => void) => () => void;
+  emit: (event: string, ...args: any[]) => void;
+  isConnected: boolean;
+} => {
   const { accessToken } = useAuthStore();
   const [isConnected, setIsConnected] = useState(socketInstance?.connected || false);
   const listenersRef = useRef(new Map<string, ((...args: unknown[]) => void)[]>());
@@ -22,7 +26,7 @@ export const useSocket = () => {
     }
 
     if (!socketInstance) {
-      socketInstance = io(`${import.meta.env.VITE_API_URL || '${import.meta.env.VITE_API_URL || 'http://localhost:3000'}'}`, {
+      socketInstance = io(import.meta.env.VITE_API_URL || 'http://localhost:3000', {
         auth: { token: accessToken },
         transports: ['websocket'],
         reconnection: true,

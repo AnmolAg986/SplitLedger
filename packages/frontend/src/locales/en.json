@@ -1,0 +1,31 @@
+{
+  "translation": {
+    "common": {
+      "loading": "Loading...",
+      "save": "Save",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "edit": "Edit",
+      "success": "Success",
+      "error": "Error",
+      "whatsNew": "What's New"
+    },
+    "nav": {
+      "dashboard": "Dashboard",
+      "activity": "Activity",
+      "connections": "Connections",
+      "expenses": "Expenses",
+      "profile": "Profile",
+      "settings": "Settings",
+      "signOut": "Sign Out"
+    },
+    "dashboard": {
+      "welcome": "Welcome back, {{name}}",
+      "totalBalance": "Total Balance",
+      "youAreOwed": "You are owed",
+      "youOwe": "You owe",
+      "recentActivity": "Recent Activity",
+      "noActivity": "No recent activity."
+    }
+  }
+}

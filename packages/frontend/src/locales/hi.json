@@ -1,0 +1,31 @@
+{
+  "translation": {
+    "common": {
+      "loading": "लोड हो रहा है...",
+      "save": "सहेजें",
+      "cancel": "रद्द करें",
+      "delete": "हटाएं",
+      "edit": "संपादित करें",
+      "success": "सफल",
+      "error": "त्रुटि",
+      "whatsNew": "नया क्या है"
+    },
+    "nav": {
+      "dashboard": "डैशबोर्ड",
+      "activity": "गतिविधि",
+      "connections": "कनेक्शन",
+      "expenses": "खर्च",
+      "profile": "प्रोफ़ाइल",
+      "settings": "सेटिंग्स",
+      "signOut": "साइन आउट"
+    },
+    "dashboard": {
+      "welcome": "वापसी पर स्वागत है, {{name}}",
+      "totalBalance": "कुल शेष",
+      "youAreOwed": "आपको मिलने हैं",
+      "youOwe": "आपको देने हैं",
+      "recentActivity": "हाल की गतिविधि",
+      "noActivity": "कोई हाल की गतिविधि नहीं।"
+    }
+  }
+}

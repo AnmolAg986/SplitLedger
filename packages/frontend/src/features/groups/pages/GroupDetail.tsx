@@ -4,7 +4,7 @@ import { EmptyState } from '../../../shared/components/EmptyState';
 import { ExpenseRowSkeleton, Skeleton } from '../../../shared/components/Skeleton';
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiClient } from '../../../shared/api/axios';
 import { ArrowLeft, Receipt, Banknote, Edit2, Trash2, Bell, Loader2, Calendar, Trophy } from 'lucide-react';
 import { ExpenseModal } from '../../expenses/components/ExpenseModal';
@@ -61,8 +61,13 @@ interface LeaderboardEntry {
 export const GroupDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const currentUser = useAuthStore(state => state.user);
   const { markAsRead } = useUnreadStore();
+  
+  const [fetchError, setFetchError] = useState<number | null>(null);
+  const [isJoining, setIsJoining] = useState(false);
+
   const [detail, setDetail] = useState<{ 
     id: string; 
     name: string; 
@@ -110,25 +115,34 @@ export const GroupDetail = () => {
   const totalOwedToMe = myBalance > 0 ? myBalance : 0;
   const totalIOwe = myBalance < 0 ? Math.abs(myBalance) : 0;
 
-  const refreshData = () => {
+  const refreshData = async () => {
     if (!id) return;
-    Promise.all([
-      apiClient.get(`/groups/${id}`),
-      apiClient.get(`/groups/${id}/expenses`),
-      apiClient.get(`/groups/${id}/leaderboard`),
-      apiClient.get(`/groups/${id}/balances`),
-      apiClient.get(`/groups/${id}/simplifications`).catch(() => ({ data: [] }))
-    ]).then(([d, e, l, b, s]) => {
+    try {
+      const [d, e, l, b, s] = await Promise.all([
+        apiClient.get(`/groups/${id}`),
+        apiClient.get(`/groups/${id}/expenses`),
+        apiClient.get(`/groups/${id}/leaderboard`),
+        apiClient.get(`/groups/${id}/balances`),
+        apiClient.get(`/groups/${id}/simplifications`).catch(() => ({ data: [] }))
+      ]);
       setDetail(d.data);
       setExpenses(e.data);
       setLeaderboard(l.data);
       setBalances(b.data);
       setSimplifications(s.data);
-    }).catch(console.error);
+      setFetchError(null);
+    } catch (err: any) {
+      if (err.response?.status === 403 || err.response?.status === 404) {
+        setFetchError(err.response.status);
+      } else {
+        console.error(err);
+      }
+    }
   };
 
   useEffect(() => {
     if (id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       refreshData();
       // Mark group sections as read since they are visible on this page
       markAsRead('group', id, 'expenses');
@@ -244,6 +258,69 @@ export const GroupDetail = () => {
   }, { enableOnFormTags: false }, [filteredExpenses.length, activeView]);
 
   const focusedExpense = focusedExpenseIndex >= 0 ? filteredExpenses[focusedExpenseIndex] : null;
+
+  const initialExpenseId = searchParams.get('expenseId');
+  useEffect(() => {
+    if (initialExpenseId && expenses.length > 0) {
+      const exp = expenses.find(e => e.id === initialExpenseId);
+      if (exp && !isExpenseModalOpen) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setExpenseToEdit(exp);
+        setExpenseModalOpen(true);
+        // Clear param so it doesn't reopen if closed
+        searchParams.delete('expenseId');
+        setSearchParams(searchParams, { replace: true });
+      }
+    }
+  }, [initialExpenseId, expenses, searchParams, setSearchParams, isExpenseModalOpen]);
+
+  if (fetchError === 403) {
+    return (
+      <div className="flex-1 h-screen bg-[#09090b] flex flex-col items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none" />
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-8 max-w-md w-full text-center relative z-10 backdrop-blur-xl animate-in fade-in zoom-in-95">
+          <div className="w-16 h-16 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto mb-4 border border-indigo-500/30">
+            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Private Group</h2>
+          <p className="text-zinc-400 mb-8">You need to be a member of this group to view its details and expenses.</p>
+          <button 
+            disabled={isJoining}
+            onClick={async () => {
+              setIsJoining(true);
+              try {
+                await apiClient.post(`/groups/${id}/join-via-link`);
+                toast.success('Joined successfully!');
+                setFetchError(null);
+                refreshData();
+              } catch (err: any) {
+                toast.error(err.response?.data?.error || 'Failed to join group');
+              } finally {
+                setIsJoining(false);
+              }
+            }}
+            className="w-full py-3 bg-indigo-500 hover:bg-indigo-400 text-white rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20"
+          >
+            {isJoining ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Join Group'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (fetchError === 404) {
+    return (
+      <div className="flex-1 h-screen bg-[#09090b] flex flex-col items-center justify-center">
+        <EmptyState 
+          illustration={<div className="text-zinc-600"><svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>}
+          headline="Group Not Found"
+          subtext="The group you're looking for doesn't exist or was deleted."
+          ctaLabel="Go Home"
+          onCta={() => navigate('/')}
+        />
+      </div>
+    );
+  }
 
   if (!detail) {
     return (

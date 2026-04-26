@@ -87,7 +87,14 @@ export const PublicProfile = () => {
           </div>
 
           <h1 className="text-3xl font-black text-white mb-1">{profile.display_name}</h1>
-          <p className="text-lg text-amber-500/80 font-bold mb-8 tracking-wide">@{profile.username}</p>
+          <p className="text-lg text-amber-500/80 font-bold mb-6 tracking-wide">@{profile.username}</p>
+
+          {isLoggedIn && profile.mutual_groups_count !== undefined && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-full mb-8 shadow-inner">
+              <span className="text-sm font-bold text-zinc-400">Mutual Groups</span>
+              <span className="text-sm font-black text-white bg-white/10 px-2.5 py-0.5 rounded-full">{profile.mutual_groups_count}</span>
+            </div>
+          )}
 
           <button 
             onClick={handleAddFriend}

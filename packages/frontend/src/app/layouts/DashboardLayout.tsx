@@ -1,7 +1,7 @@
 import { LazyImage } from '../../shared/components/LazyImage';
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Activity, LayoutDashboard, Settings, PanelLeft, PanelLeftClose, LogOut, Users, Receipt, User, Clock, Bell, Moon, Sun, Monitor } from 'lucide-react';
+import { Activity, LayoutDashboard, Settings, PanelLeft, PanelLeftClose, LogOut, Users, Receipt, User, Clock, Bell, Moon, Sun, Monitor, Languages } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { CommandPalette } from '../../features/dashboard/components/CommandPalette';
 import { useSocket } from '../../shared/hooks/useSocket';
@@ -15,13 +15,20 @@ import { ShortcutOverlay } from '../../shared/components/ShortcutOverlay';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { CreateExpenseModal } from '../../shared/components/CreateExpenseModal';
 import { OnboardingModal } from '../../shared/components/OnboardingModal';
+import { ChangelogModal } from '../../shared/components/ChangelogModal';
 import { apiClient } from '../../shared/api/axios';
+import { Sparkles } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export const DashboardLayout = () => {
+  const { t, i18n } = useTranslation();
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isGlobalExpenseOpen, setIsGlobalExpenseOpen] = useState(false);
+  const [isChangelogOpen, setIsChangelogOpen] = useState(false);
+  const [changelogData, setChangelogData] = useState<{ version: string; content: string } | null>(null);
+  const [hasNewUpdate, setHasNewUpdate] = useState(false);
   const [friends, setFriends] = useState<any[]>([]);
   const { theme, setTheme } = useThemeStore();
 
@@ -38,6 +45,24 @@ export const DashboardLayout = () => {
       fetchCounts();
     }
   }, [isConnected, fetchCounts]);
+
+  React.useEffect(() => {
+    const fetchChangelog = async () => {
+      try {
+        const res = await apiClient.get('/system/changelog');
+        const { latestVersion, content } = res.data;
+        setChangelogData({ version: latestVersion, content });
+
+        const lastSeen = localStorage.getItem('splitledger_changelog_version');
+        if (lastSeen !== latestVersion) {
+          setHasNewUpdate(true);
+        }
+      } catch (err) {
+        console.error('Failed to fetch changelog:', err);
+      }
+    };
+    fetchChangelog();
+  }, []);
 
   React.useEffect(() => {
     const unsub = on('notification', (data: any) => {
@@ -77,6 +102,11 @@ export const DashboardLayout = () => {
     navigate('/login');
   };
 
+  const cycleLanguage = () => {
+    const nextLang = i18n.language.startsWith('en') ? 'hi' : 'en';
+    i18n.changeLanguage(nextLang);
+  };
+
   const cycleTheme = () => {
     if (theme === 'system') setTheme('dark');
     else if (theme === 'dark') setTheme('light');
@@ -89,11 +119,11 @@ export const DashboardLayout = () => {
   const connectionsBadge = friendsBadge + groupsBadge;
 
   const menuItems = [
-    { name: 'Dashboard', icon: LayoutDashboard, path: '/' },
-    { name: 'Activity', icon: Clock, path: '/activity', badge: totalActivityBadge > 0 ? (totalActivityBadge > 99 ? '99+' : totalActivityBadge.toString()) : undefined },
-    { name: 'Connections', icon: Users, path: '/connections', badge: connectionsBadge > 0 ? (connectionsBadge > 99 ? '99+' : connectionsBadge.toString()) : undefined },
-    { name: 'Expenses', icon: Receipt, path: '/expenses' },
-    { name: 'Profile', icon: User, path: '/profile' },
+    { name: t('nav.dashboard'), icon: LayoutDashboard, path: '/' },
+    { name: t('nav.activity'), icon: Clock, path: '/activity', badge: totalActivityBadge > 0 ? (totalActivityBadge > 99 ? '99+' : totalActivityBadge.toString()) : undefined },
+    { name: t('nav.connections'), icon: Users, path: '/connections', badge: connectionsBadge > 0 ? (connectionsBadge > 99 ? '99+' : connectionsBadge.toString()) : undefined },
+    { name: t('nav.expenses'), icon: Receipt, path: '/expenses' },
+    { name: t('nav.profile'), icon: User, path: '/profile' },
   ];
 
   return (
@@ -182,6 +212,34 @@ export const DashboardLayout = () => {
 
         {/* Bottom Menu Items -> Separated out like Settings */}
         <div className="px-3 pb-4">
+           <button
+              onClick={() => {
+                setIsChangelogOpen(true);
+                if (changelogData) {
+                  localStorage.setItem('splitledger_changelog_version', changelogData.version);
+                  setHasNewUpdate(false);
+                }
+              }}
+              className={`flex w-full items-center ${isCollapsed ? 'justify-center' : 'justify-start gap-4 px-3'} py-3 mb-1 rounded-lg font-medium transition-all duration-200 group relative text-zinc-500 hover:text-zinc-200 hover:bg-white/5`}
+              title={isCollapsed ? t('common.whatsNew') : undefined}
+            >
+                <div className="relative flex items-center justify-center">
+                  <Sparkles className={`h-[20px] w-[20px] shrink-0 text-zinc-500 group-hover:text-zinc-300 transition-colors ${hasNewUpdate ? 'text-indigo-400 group-hover:text-indigo-300' : ''}`} />
+                  {isCollapsed && hasNewUpdate && (
+                    <span className="absolute -top-1 -right-1 bg-rose-500 text-transparent text-[0px] w-2.5 h-2.5 rounded-full shadow-[0_0_8px_rgba(244,63,94,0.6)] animate-pulse" />
+                  )}
+                </div>
+                {!isCollapsed && (
+                  <div className="flex items-center justify-between w-full overflow-hidden transition-all duration-300">
+                    <span className={`text-[14px] whitespace-nowrap ${hasNewUpdate ? 'text-indigo-400' : ''}`}>{t('common.whatsNew')}</span>
+                    {hasNewUpdate && (
+                      <span className="ml-auto bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-[0_0_8px_rgba(244,63,94,0.6)] animate-pulse">
+                        NEW
+                      </span>
+                    )}
+                  </div>
+                )}
+            </button>
            <NavLink
               to="/settings"
               className={({ isActive }) =>
@@ -190,12 +248,12 @@ export const DashboardLayout = () => {
                   ? `text-white bg-white/10 shadow-sm border border-white/10` 
                   : `text-zinc-500 hover:text-zinc-200 hover:bg-white/5 border border-transparent`)
               }
-              title={isCollapsed ? 'Settings' : undefined}
+              title={isCollapsed ? t('nav.settings') : undefined}
             >
               {({ isActive }) => (
                   <>
                     <Settings className={`h-[20px] w-[20px] shrink-0 ${isActive ? 'text-cyan-400' : 'text-zinc-500 group-hover:text-zinc-300'}`} />
-                    {!isCollapsed && <span className="text-[14px] whitespace-nowrap">Settings</span>}
+                    {!isCollapsed && <span className="text-[14px] whitespace-nowrap">{t('nav.settings')}</span>}
                     {isActive && (
                       <div className="absolute left-0 w-1 h-6 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-r-md shadow-[0_0_8px_rgba(34,211,238,0.6)]"></div>
                     )}
@@ -227,18 +285,28 @@ export const DashboardLayout = () => {
           
           <div className={`flex ${isCollapsed ? 'flex-col gap-2' : 'gap-1'}`}>
             <button 
+              onClick={cycleLanguage}
+              className="p-2 rounded-lg text-zinc-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+              title={`Language: ${i18n.language.toUpperCase()}`}
+              aria-label={`Toggle language (currently ${i18n.language.toUpperCase()})`}
+            >
+              <Languages className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <button 
               onClick={cycleTheme}
               className="p-2 rounded-lg text-zinc-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
               title={`Theme: ${theme}`}
+              aria-label={`Toggle theme (currently ${theme})`}
             >
-              {theme === 'system' ? <Monitor className="h-4 w-4" /> : theme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+              {theme === 'system' ? <Monitor className="h-4 w-4" aria-hidden="true" /> : theme === 'dark' ? <Moon className="h-4 w-4" aria-hidden="true" /> : <Sun className="h-4 w-4" aria-hidden="true" />}
             </button>
             <button 
               onClick={handleLogout}
               className="p-2 rounded-lg text-zinc-500 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-              title="Sign Out"
+              title={t('nav.signOut')}
+              aria-label={t('nav.signOut')}
             >
-              <LogOut className="h-4 w-4" strokeWidth={2.5} />
+              <LogOut className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -262,6 +330,14 @@ export const DashboardLayout = () => {
             { id: user.id, display_name: user.displayName || 'You' },
             ...friends.map(f => ({ id: f.id, display_name: f.display_name }))
           ]}
+        />
+      )}
+
+      {changelogData && (
+        <ChangelogModal
+          isOpen={isChangelogOpen}
+          onClose={() => setIsChangelogOpen(false)}
+          markdownContent={changelogData.content}
         />
       )}
 
